@@ -1,0 +1,11 @@
+id,name,url,active,domainType,lastTestedAt,lastStatus
+test-001,Test Site 1,https://test-001.example.com,true,smartonline,,
+test-002,Test Site 2,https://test-002.example.com,true,smartonline,2024-01-10,PASS
+test-003,Test Site 3,https://test-003.example.com,true,custom,2024-03-15,PASS
+test-004,Inactive Site,https://test-004.example.com,false,smartonline,,
+test-005,Test Site 5,https://test-005.example.com,true,smartonline,2024-06-01,FAIL
+test-006,Test Site 6,https://test-006.example.com,true,smartonline,,
+test-007,Test Site 7,https://test-007.example.com,true,custom,2024-02-20,PASS
+test-008,Inactive Site 2,https://test-008.example.com,false,custom,,
+test-009,Test Site 9,https://test-009.example.com,true,smartonline,2024-05-10,WARNING
+test-010,Test Site 10,https://test-010.example.com,true,smartonline,,

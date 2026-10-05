@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>AFG Automation Dashboard</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="container">
+    <header style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem;">
+      <h1>AFG Automation Dashboard</h1>
+      <div style="display: flex; gap: 1rem; align-items: center; flex-wrap: wrap;">
+        <div style="display: flex; gap: 0.5rem; align-items: center;">
+          <input type="text" id="websiteHistorySearch" placeholder="Search Website ID or URL" style="padding: 0.25rem; border: 1px solid var(--border-color); border-radius: 4px; font-size: 0.875rem; width: 200px;">
+          <button id="websiteHistoryBtn" style="padding: 0.25rem 0.75rem; font-size: 0.875rem;">History</button>
+        </div>
+        <div style="display: flex; gap: 0.5rem; align-items: center; padding-left: 1rem; border-left: 1px solid var(--border-color);">
+          <label for="historyDateInput" style="font-size: 0.875rem; color: var(--text-muted);">Execution Date:</label>
+          <input type="date" id="historyDateInput" style="padding: 0.25rem; border: 1px solid var(--border-color); border-radius: 4px;">
+          <button id="loadDateBtn" style="padding: 0.25rem 0.75rem; font-size: 0.875rem;">Load Date</button>
+        </div>
+      </div>
+    </header>
+
+    <main>
+      <!-- Summary Section -->
+      <section class="card">
+        <h2 id="summaryHeading">Today's Summary</h2>
+        <div class="summary-grid" id="summaryGrid">
+          <div class="stat-box">
+            <span class="stat-value" id="statTotalTested">-</span>
+            <span class="stat-label">Total Tested</span>
+          </div>
+          <div class="stat-box success">
+            <span class="stat-value" id="statPassed">-</span>
+            <span class="stat-label">Passed</span>
+          </div>
+          <div class="stat-box danger">
+            <span class="stat-value" id="statFailed">-</span>
+            <span class="stat-label">Failed</span>
+          </div>
+          <div class="stat-box warning">
+            <span class="stat-value" id="statWarnings">-</span>
+            <span class="stat-label">Warnings</span>
+          </div>
+          <div class="stat-box gray">
+            <span class="stat-value" id="statNotTested">-</span>
+            <span class="stat-label">Not Tested</span>
+          </div>
+        </div>
+      </section>
+
+      <!-- Ad-Hoc Test Section -->
+      <section class="card">
+        <h2>Ad-Hoc Website Test</h2>
+        <form id="testForm">
+          <div class="form-group">
+            <label for="urlInput">Website URL</label>
+            <input type="url" id="urlInput" placeholder="https://example.com" required>
+          </div>
+          <div class="form-group">
+            <label>Validators</label>
+            <div class="checkbox-group">
+              <label><input type="checkbox" name="validator" value="dns"> DNS</label>
+              <label><input type="checkbox" name="validator" value="ssl"> SSL</label>
+              <label><input type="checkbox" name="validator" value="http"> HTTP</label>
+              <label><input type="checkbox" name="validator" value="ui"> UI</label>
+              <label><input type="checkbox" name="validator" value="responsive"> Responsive</label>
+              <label><input type="checkbox" name="validator" value="cross-browser"> Cross-Browser</label>
+              <label><input type="checkbox" name="validator" value="visual"> Visual</label>
+            </div>
+          </div>
+          <button type="submit" id="submitBtn">Run Test</button>
+        </form>
+
+        <div id="statusContainer" class="hidden">
+          <h3>Execution Status</h3>
+          <p>Run ID: <span id="currentRunId">-</span></p>
+          <p>Status: <span id="currentStatus" class="badge badge-queued">QUEUED</span></p>
+          <div id="executionResult" class="hidden">
+            <div id="executionAction" style="margin-top: 1rem;"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Website Tests List Section -->
+      <section class="card">
+        <h2 id="websiteTestsHeading">Today's Website Tests</h2>
+        <table class="table">
+          <thead>
+            <tr>
+              <th>Website</th>
+              <th>URL</th>
+              <th>Status</th>
+              <th>Tests</th>
+            </tr>
+          </thead>
+          <tbody id="websiteTestsBody">
+            <tr><td colspan="4">Loading...</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+    </main>
+  </div>
+
+  <!-- Execution Details Modal -->
+  <dialog id="detailsModal" class="modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2>Website QA Result</h2>
+        <button id="closeModalBtn" class="close-btn" onclick="closeRunDetails()">&times;</button>
+      </div>
+      <div class="modal-body" id="modalBodyContent">
+        <!-- Content dynamically injected here -->
+      </div>
+    </div>
+  </dialog>
+
+  <!-- Website History Modal -->
+  <dialog id="websiteHistoryModal" class="modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2>Website History</h2>
+        <button class="close-btn" onclick="document.getElementById('websiteHistoryModal').close()">&times;</button>
+      </div>
+      <div class="modal-body" id="historyModalBody">
+        <!-- Content dynamically injected here -->
+      </div>
+    </div>
+  </dialog>
+  <script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,20 @@
+# Dependencies
+node_modules/
+
+# Generated output
+reports/
+artifacts/
+coverage/
+
+# Logs
+*.log
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo

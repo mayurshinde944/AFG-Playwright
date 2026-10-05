@@ -1,0 +1,31 @@
+{
+  "name": "afg-automation",
+  "version": "0.1.0",
+  "description": "Website QA Automation Platform for approximately 850 websites",
+  "main": "src/cli/preview.js",
+  "scripts": {
+    "test": "jest --verbose",
+    "test:coverage": "jest --coverage --verbose",
+    "preview": "node src/cli/preview.js --mode preview",
+    "qa": "node src/cli/qa.js",
+    "baseline": "node src/cli/baseline.js"
+  },
+  "keywords": [
+    "qa",
+    "automation",
+    "website-testing"
+  ],
+  "license": "UNLICENSED",
+  "private": true,
+  "dependencies": {
+    "express": "^5.2.1",
+    "pixelmatch": "^5.3.0",
+    "playwright": "^1.62.1",
+    "pngjs": "^7.0.0",
+    "winston": "^3.11.0",
+    "xlsx": "^0.18.5"
+  },
+  "devDependencies": {
+    "jest": "^29.7.0"
+  }
+}
