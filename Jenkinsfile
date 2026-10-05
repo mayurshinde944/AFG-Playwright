@@ -14,20 +14,20 @@ pipeline {
 
         stage('Install Dependencies') {
             steps {
-                sh 'npm ci'
+                bat 'npm ci'
             }
         }
 
         stage('Install Playwright Browsers') {
             steps {
-                sh 'npx playwright install --with-deps chromium firefox webkit'
+                bat 'npx playwright install --with-deps chromium firefox webkit'
             }
         }
 
         stage('Run QA') {
             steps {
                 script {
-                    def exitCode = sh(script: 'npm run qa', returnStatus: true)
+                    def exitCode = bat(script: 'npm run qa', returnStatus: true)
                     if (exitCode == 0) {
                         currentBuild.result = 'SUCCESS'
                     } else if (exitCode == 1) {
