@@ -2,25 +2,117 @@
 
 const fs = require('fs');
 const path = require('path');
-const { execSync } = require('child_process');
 const xlsx = require('xlsx');
+const runQa = require('../../src/cli/qa');
+
+// Guard against any accidental external network or browser interactions
+jest.mock('dns', () => ({
+  promises: {
+    resolveCname: jest.fn().mockRejectedValue(new Error('Unexpected network call: dns.resolveCname')),
+    resolve4: jest.fn().mockRejectedValue(new Error('Unexpected network call: dns.resolve4'))
+  }
+}));
+
+jest.mock('https', () => ({
+  request: jest.fn(() => {
+    throw new Error('Unexpected network call: https.request');
+  })
+}));
+
+jest.mock('http', () => ({
+  request: jest.fn(() => {
+    throw new Error('Unexpected network call: http.request');
+  })
+}));
+
+jest.mock('playwright', () => ({
+  chromium: {
+    launch: jest.fn().mockRejectedValue(new Error('Unexpected browser launch: playwright.chromium'))
+  },
+  firefox: {
+    launch: jest.fn().mockRejectedValue(new Error('Unexpected browser launch: playwright.firefox'))
+  },
+  webkit: {
+    launch: jest.fn().mockRejectedValue(new Error('Unexpected browser launch: playwright.webkit'))
+  }
+}));
+
+// Mock ExecutionEngine to return deterministic ValidationResult objects without invoking live validators
+jest.mock('../../src/core/ExecutionEngine', () => {
+  const { ValidationResult, STATUS } = require('../../src/models/ValidationResult');
+
+  return jest.fn().mockImplementation((config, registry, aggregator) => ({
+    execute: jest.fn(async (plan) => {
+      for (const website of plan.websites) {
+        for (const validatorName of plan.validators) {
+          aggregator.add(new ValidationResult({
+            websiteId: website.id,
+            validatorName,
+            status: STATUS.PASS,
+            message: `Mock validation passed for ${validatorName}`,
+            duration: 10,
+            details: {
+              originalUrl: website.url,
+              finalUrl: website.url,
+              cnames: ['staging-smartonline.com.au'],
+              ipAddresses: ['1.2.3.4'],
+              statusCode: 200,
+              certificateNormalized: {
+                validTo: '2027-01-01',
+                subject: 'CN=staging-smartonline.com.au',
+                issuer: 'O=Test CA',
+                daysRemaining: 365
+              }
+            },
+            metrics: {
+              pagesTested: 1,
+              pagesPassed: 1,
+              pagesWarnings: 0,
+              pagesFailed: 0
+            },
+            pages: []
+          }));
+        }
+      }
+    })
+  }));
+});
 
 describe('Reporting CLI Integration', () => {
   const artifactsDir = path.join(__dirname, '../../artifacts/reports');
+  let originalExitCode;
 
-  beforeEach(() => {
-    if (fs.existsSync(artifactsDir)) {
-      const files = fs.readdirSync(artifactsDir);
-      for (const file of files) {
-        fs.unlinkSync(path.join(artifactsDir, file));
-      }
-    } else {
-      fs.mkdirSync(artifactsDir, { recursive: true });
-    }
+  const runQaCli = async (cmdOrArgs) => {
+    const args = Array.isArray(cmdOrArgs)
+      ? cmdOrArgs
+      : cmdOrArgs.replace(/^node\s+src\/cli\/qa\.js\s*/, '').trim().split(/\s+/);
+    return await runQa(args);
+  };
+
+  beforeAll(() => {
+    jest.spyOn(console, 'log').mockImplementation(() => {});
   });
 
-  it('should generate EXACTLY 1 Operational Excel report for lightweight validators', () => {
-    execSync('node src/cli/qa.js --specific dns-001 --validator dns --report excel');
+  afterAll(() => {
+    console.log.mockRestore();
+  });
+
+  beforeEach(() => {
+    originalExitCode = process.exitCode;
+    process.exitCode = undefined;
+
+    if (fs.existsSync(artifactsDir)) {
+      fs.rmSync(artifactsDir, { recursive: true, force: true });
+    }
+    fs.mkdirSync(artifactsDir, { recursive: true });
+  });
+
+  afterEach(() => {
+    process.exitCode = originalExitCode;
+  });
+
+  it('should generate EXACTLY 1 Operational Excel report for lightweight validators', async () => {
+    await runQaCli(['--specific', 'dns-001', '--validator', 'dns', '--report', 'excel']);
     
     const files = fs.readdirSync(artifactsDir).filter(f => f.endsWith('.xlsx'));
     expect(files.length).toBe(1);
@@ -28,8 +120,8 @@ describe('Reporting CLI Integration', () => {
     expect(files[0]).toContain('SPECIFIC');
   });
 
-  it('should generate EXACTLY 1 Detailed Excel report for heavy validators', () => {
-    execSync('node src/cli/qa.js --specific dns-001 --validator ui --report excel');
+  it('should generate EXACTLY 1 Detailed Excel report for heavy validators', async () => {
+    await runQaCli(['--specific', 'dns-001', '--validator', 'ui', '--report', 'excel']);
     
     const files = fs.readdirSync(artifactsDir).filter(f => f.endsWith('.xlsx'));
     expect(files.length).toBe(1);
@@ -55,19 +147,19 @@ describe('Reporting CLI Integration', () => {
     });
   });
 
-  it('should not generate extra reports because of previous executions', () => {
+  it('should not generate extra reports because of previous executions', async () => {
     // Create a dummy previous report
     fs.writeFileSync(path.join(artifactsDir, 'QA_Operational_Report_Old_SPECIFIC.xlsx'), 'dummy');
 
-    execSync('node src/cli/qa.js --specific dns-001 --validator dns --report excel');
+    await runQaCli(['--specific', 'dns-001', '--validator', 'dns', '--report', 'excel']);
     
     const files = fs.readdirSync(artifactsDir).filter(f => f.endsWith('.xlsx'));
     expect(files.length).toBe(2); // The old one + exactly one new one
   });
 
-  it('should accumulate multiple --validator arguments and execute all of them', () => {
+  it('should accumulate multiple --validator arguments and execute all of them', async () => {
     // Run with 3 lightweight validators
-    execSync('node src/cli/qa.js --specific dns-001 --validator dns --validator ssl --validator http --report excel');
+    await runQaCli(['--specific', 'dns-001', '--validator', 'dns', '--validator', 'ssl', '--validator', 'http', '--report', 'excel']);
     
     const files = fs.readdirSync(artifactsDir).filter(f => f.endsWith('.xlsx'));
     expect(files.length).toBe(1);
@@ -90,8 +182,8 @@ describe('Reporting CLI Integration', () => {
     expect(row['HTTP Status']).not.toBe('');
   });
 
-  it('should produce ALL filename for all scope', () => {
-    execSync('node src/cli/qa.js --all --validator dns --report excel');
+  it('should produce ALL filename for all scope', async () => {
+    await runQaCli(['--all', '--validator', 'dns', '--report', 'excel']);
     
     const files = fs.readdirSync(artifactsDir).filter(f => f.endsWith('.xlsx'));
     expect(files.length).toBe(1);

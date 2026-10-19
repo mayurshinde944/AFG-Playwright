@@ -39,8 +39,16 @@ jest.mock('playwright', () => ({
 jest.spyOn(console, 'log').mockImplementation(() => {});
 
 describe('QA CLI Integration', () => {
+  let originalExitCode;
+
   beforeEach(() => {
+    originalExitCode = process.exitCode;
+    process.exitCode = undefined;
     jest.clearAllMocks();
+  });
+
+  afterEach(() => {
+    process.exitCode = originalExitCode;
   });
 
   it('should execute end-to-end DNS validation on a specific website', async () => {

@@ -93,7 +93,57 @@ describe('Dashboard API Endpoints', () => {
         expect(site2.runId).toBe('run-daily-1');
         expect(site2.overallStatus).toBe('FAIL'); // FAIL > WARNING > PASS
         expect(site2.validators).toEqual(['ui']);
+
+        // Verify summary counts across all scopes in mockRuns (5 sites total: 2 failed, 0 warnings, 3 passed)
+        expect(data.summary).toBeDefined();
+        expect(data.summary.totalTested).toBe(5);
+        expect(data.summary.failed).toBe(2);
+        expect(data.summary.warnings).toBe(0);
+        expect(data.summary.passed).toBe(3);
         
+        done();
+      });
+    });
+  });
+
+  test('GET /api/dashboard/today includes PASS in summary and preserves FAIL/ERROR > WARNING > PASS precedence', (done) => {
+    const testRuns = [
+      {
+        execution: { scope: 'random', runId: 'run-precedence-1' },
+        websites: [
+          { websiteId: 'site-pass', url: 'https://pass.com' },
+          { websiteId: 'site-warn', url: 'https://warn.com' },
+          { websiteId: 'site-fail', url: 'https://fail.com' },
+          { websiteId: 'site-err', url: 'https://err.com' }
+        ],
+        results: [
+          // site-pass: all PASS
+          { websiteId: 'site-pass', validatorName: 'dns', status: 'PASS' },
+          { websiteId: 'site-pass', validatorName: 'ssl', status: 'PASS' },
+          // site-warn: PASS + WARNING -> WARNING
+          { websiteId: 'site-warn', validatorName: 'dns', status: 'PASS' },
+          { websiteId: 'site-warn', validatorName: 'ssl', status: 'WARNING' },
+          // site-fail: WARNING + FAIL -> FAIL
+          { websiteId: 'site-fail', validatorName: 'dns', status: 'WARNING' },
+          { websiteId: 'site-fail', validatorName: 'ssl', status: 'FAIL' },
+          // site-err: PASS + ERROR -> FAIL
+          { websiteId: 'site-err', validatorName: 'dns', status: 'PASS' },
+          { websiteId: 'site-err', validatorName: 'ssl', status: 'ERROR' }
+        ]
+      }
+    ];
+    ResultStore.getTodayRuns.mockResolvedValue(testRuns);
+
+    http.get(`http://127.0.0.1:${port}/api/dashboard/today`, (res) => {
+      expect(res.statusCode).toBe(200);
+      let body = '';
+      res.on('data', d => body += d);
+      res.on('end', () => {
+        const data = JSON.parse(body);
+        expect(data.summary.totalTested).toBe(4);
+        expect(data.summary.passed).toBe(1);   // site-pass
+        expect(data.summary.warnings).toBe(1); // site-warn
+        expect(data.summary.failed).toBe(2);   // site-fail and site-err
         done();
       });
     });

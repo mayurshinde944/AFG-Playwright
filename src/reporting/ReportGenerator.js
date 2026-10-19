@@ -70,11 +70,11 @@ class ReportGenerator {
       await Promise.all(tasks);
     }
 
-    // Perform non-blocking cleanup
-    this._cleanupOldReports(outputDir, logger);
+    // Perform cleanup of old reports
+    await this._cleanupOldReports(outputDir, logger);
   }
 
-  static _cleanupOldReports(outputDir, logger) {
+  static async _cleanupOldReports(outputDir, logger) {
     const retentionDays = 7;
     const now = Date.now();
     const retentionMs = retentionDays * 24 * 60 * 60 * 1000;
@@ -82,34 +82,43 @@ class ReportGenerator {
 
     const reportRegex = /^QA_(Operational|Detailed)_Report_.*\.xlsx$/;
 
-    fs.readdir(outputDir, (err, files) => {
-      if (err) {
+    let files;
+    try {
+      files = await fs.promises.readdir(outputDir);
+    } catch (err) {
+      if (err.code !== 'ENOENT') {
         logger.warn(`Failed to read report directory for cleanup: ${err.message}`);
-        return;
       }
+      return;
+    }
 
-      for (const file of files) {
-        if (reportRegex.test(file)) {
-          const filepath = path.join(outputDir, file);
-          fs.stat(filepath, (statErr, stats) => {
-            if (statErr) {
-              logger.warn(`Failed to stat file during cleanup (${file}): ${statErr.message}`);
-              return;
-            }
-
+    const tasks = [];
+    for (const file of files) {
+      if (reportRegex.test(file)) {
+        const filepath = path.join(outputDir, file);
+        tasks.push((async () => {
+          try {
+            const stats = await fs.promises.stat(filepath);
             if (stats.mtimeMs < cutoffTime) {
-              fs.unlink(filepath, (unlinkErr) => {
-                if (unlinkErr) {
+              try {
+                await fs.promises.unlink(filepath);
+                logger.info(`Deleted old report: ${file}`);
+              } catch (unlinkErr) {
+                if (unlinkErr.code !== 'ENOENT') {
                   logger.warn(`Failed to delete old report (${file}): ${unlinkErr.message}`);
-                } else {
-                  logger.info(`Deleted old report: ${file}`);
                 }
-              });
+              }
             }
-          });
-        }
+          } catch (statErr) {
+            if (statErr.code !== 'ENOENT') {
+              logger.warn(`Failed to stat file during cleanup (${file}): ${statErr.message}`);
+            }
+          }
+        })());
       }
-    });
+    }
+
+    await Promise.all(tasks);
   }
 }
 

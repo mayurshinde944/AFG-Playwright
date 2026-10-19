@@ -52,6 +52,8 @@ async function generateSummaryResponse(runs, config) {
         websiteStatusMap.set(res.websiteId, 'FAIL');
       } else if (res.status === 'WARNING' && currentStatus !== 'FAIL') {
         websiteStatusMap.set(res.websiteId, 'WARNING');
+      } else if (!websiteStatusMap.has(res.websiteId)) {
+        websiteStatusMap.set(res.websiteId, 'PASS');
       }
     }
 
