@@ -4,6 +4,7 @@ const { app } = require('../../src/api/server');
 const CsvExcelInventoryLoader = require('../../src/inventory/CsvExcelInventoryLoader');
 const Website = require('../../src/models/Website');
 const ExecutionEngine = require('../../src/core/ExecutionEngine');
+const ExecutionPlanner = require('../../src/core/ExecutionPlanner');
 const ExecutionQueue = require('../../src/core/ExecutionQueue');
 const ResultStore = require('../../src/reporting/ResultStore');
 
@@ -14,6 +15,7 @@ describe('API Executions Endpoints', () => {
   let engineSpy;
   let resultStoreSpy;
   let enqueueSpy;
+  let plannerSpy;
 
   const fixtureWebsites = [
     new Website({ id: 'site-001', name: 'Site 1', url: 'https://site1.example.com', active: true }),
@@ -46,6 +48,7 @@ describe('API Executions Endpoints', () => {
     engineSpy = jest.spyOn(ExecutionEngine.prototype, 'execute').mockResolvedValue();
     resultStoreSpy = jest.spyOn(ResultStore, 'saveRun').mockResolvedValue();
     enqueueSpy = jest.spyOn(ExecutionQueue, 'enqueue');
+    plannerSpy = jest.spyOn(ExecutionPlanner, 'plan');
   });
 
   afterEach(() => {
@@ -53,6 +56,7 @@ describe('API Executions Endpoints', () => {
     if (engineSpy) engineSpy.mockRestore();
     if (resultStoreSpy) resultStoreSpy.mockRestore();
     if (enqueueSpy) enqueueSpy.mockRestore();
+    if (plannerSpy) plannerSpy.mockRestore();
   });
 
   function postJson(payload, callback) {
@@ -189,6 +193,76 @@ describe('API Executions Endpoints', () => {
       expect(body.runId).toBeDefined();
       expect(body.status).toBe('QUEUED');
       expect(enqueueSpy).toHaveBeenCalledTimes(1);
+      done();
+    });
+  });
+
+  test('POST /api/executions successfully enqueues a batch of URLs without protocol (auto-adds https://)', (done) => {
+    postJson({ urls: ['example.com', 'elementor.staging-smartonline.com.au'], validators: ['ssl'] }, (res, body) => {
+      expect(res.statusCode).toBe(202);
+      expect(body.runId).toBeDefined();
+      expect(body.status).toBe('QUEUED');
+      expect(enqueueSpy).toHaveBeenCalledTimes(1);
+      const enqueuedReq = plannerSpy.mock.calls[0][0];
+      expect(enqueuedReq.scope.urls).toEqual([
+        'https://example.com/',
+        'https://elementor.staging-smartonline.com.au/'
+      ]);
+      done();
+    });
+  });
+
+  test('POST /api/executions successfully enqueues a single-URL batch (urls: [example.com])', (done) => {
+    postJson({ urls: ['example.com'], validators: ['http'] }, (res, body) => {
+      expect(res.statusCode).toBe(202);
+      expect(body.runId).toBeDefined();
+      expect(body.status).toBe('QUEUED');
+      expect(enqueueSpy).toHaveBeenCalledTimes(1);
+      const enqueuedReq = plannerSpy.mock.calls[0][0];
+      expect(enqueuedReq.scope.urls).toEqual(['https://example.com/']);
+      done();
+    });
+  });
+
+  test('POST /api/executions rejects duplicate URLs when one has no protocol and one has https://', (done) => {
+    postJson({ urls: ['example.com', 'https://example.com/'], validators: ['http'] }, (res, body) => {
+      expect(res.statusCode).toBe(400);
+      expect(body.error).toContain('Duplicate URL detected in batch: https://example.com/');
+      expect(enqueueSpy).not.toHaveBeenCalled();
+      done();
+    });
+  });
+
+  test('POST /api/executions preserves explicit http:// when entered alongside https://', (done) => {
+    postJson({ urls: ['http://example.com', 'https://example.com'], validators: ['http'] }, (res, body) => {
+      expect(res.statusCode).toBe(202);
+      expect(body.runId).toBeDefined();
+      expect(body.status).toBe('QUEUED');
+      expect(enqueueSpy).toHaveBeenCalledTimes(1);
+      const enqueuedReq = plannerSpy.mock.calls[0][0];
+      expect(enqueuedReq.scope.urls).toEqual(['http://example.com', 'https://example.com']);
+      done();
+    });
+  });
+
+  test('POST /api/executions accepts case-insensitive protocol like HTTP://', (done) => {
+    postJson({ urls: ['HTTP://EXAMPLE.COM', 'HTTPS://EXAMPLE.ORG'], validators: ['http'] }, (res, body) => {
+      expect(res.statusCode).toBe(202);
+      expect(body.runId).toBeDefined();
+      expect(body.status).toBe('QUEUED');
+      expect(enqueueSpy).toHaveBeenCalledTimes(1);
+      done();
+    });
+  });
+
+  test('POST /api/executions preserves backward compatibility for single url without protocol', (done) => {
+    postJson({ url: 'example.com', validators: ['http'] }, (res, body) => {
+      expect(res.statusCode).toBe(202);
+      expect(body.runId).toBeDefined();
+      expect(body.status).toBe('QUEUED');
+      expect(enqueueSpy).toHaveBeenCalledTimes(1);
+      const enqueuedReq = plannerSpy.mock.calls[0][0];
+      expect(enqueuedReq.scope.url).toBe('https://example.com/');
       done();
     });
   });

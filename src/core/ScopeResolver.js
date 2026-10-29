@@ -24,9 +24,18 @@ class ScopeResolver {
     if (!trimmed) {
       throw new Error(`Invalid ad-hoc URL provided: ${rawUrl}`);
     }
+
+    // Prepend https:// if no scheme is specified
+    let urlToParse = trimmed;
+    const hasScheme = /^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//.test(trimmed) ||
+                      /^(javascript|data|vbscript|mailto|about|blob):/i.test(trimmed);
+    if (!hasScheme) {
+      urlToParse = `https://${trimmed}`;
+    }
+
     let parsed;
     try {
-      parsed = new URL(trimmed);
+      parsed = new URL(urlToParse);
     } catch (err) {
       throw new Error(`Invalid ad-hoc URL provided: ${trimmed}`);
     }
@@ -37,11 +46,24 @@ class ScopeResolver {
 
     const protocol = parsed.protocol.toLowerCase();
     const host = parsed.hostname.toLowerCase();
+
+    // Hostname must be valid: must contain at least one dot, or be localhost or an IP
+    const isLocalhost = host === 'localhost';
+    const isIp = /^(\d{1,3}\.){3}\d{1,3}$/.test(host) || host.startsWith('[');
+    const hasValidDomainStructure = host.includes('.') && !host.startsWith('.') && !host.endsWith('.');
+
+    if (!isLocalhost && !isIp && !hasValidDomainStructure) {
+      throw new Error(`Invalid ad-hoc URL provided: ${trimmed}`);
+    }
+
     const port = (parsed.port && parsed.port !== '80' && parsed.port !== '443') ? `:${parsed.port}` : '';
 
     let pathname = parsed.pathname || '/';
     if (pathname.length > 1 && pathname.endsWith('/')) {
       pathname = pathname.replace(/\/+$/, '');
+      if (pathname === '') {
+        pathname = '/';
+      }
     }
 
     const search = parsed.search || '';
@@ -167,10 +189,11 @@ class ScopeResolver {
         const id = count === 1 ? baseSlug : `${baseSlug}-${count}`;
 
         const nameSuffix = parsed.pathname !== '/' ? parsed.pathname : '';
+        const siteUrl = (typeof target === 'string' && /^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//.test(target.trim())) ? target.trim() : normalized;
         websites.push(new Website({
           id,
           name: `Ad-hoc: ${parsed.hostname}${nameSuffix}`,
-          url: typeof target === 'string' ? target.trim() : normalized,
+          url: siteUrl,
           active: true,
           domainType: 'custom'
         }));

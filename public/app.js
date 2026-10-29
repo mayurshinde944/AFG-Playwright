@@ -377,36 +377,13 @@ function setupAdHocForm() {
   const executionResult = document.getElementById('executionResult');
   const executionAction = document.getElementById('executionAction');
 
-  // Mode radio buttons and containers
-  const modeBatch = document.getElementById('modeBatch');
-  const modeSingle = document.getElementById('modeSingle');
-  const batchModeControls = document.getElementById('batchModeControls');
-  const singleModeControls = document.getElementById('singleModeControls');
-
-  // Input elements and badge
+  // URL input textarea and live counter badge
   const batchUrlsInput = document.getElementById('batchUrlsInput');
   const batchCountBadge = document.getElementById('batchCountBadge');
-  const urlInput = document.getElementById('urlInput');
 
   const MAX_BATCH_SIZE = 10;
   let pollInterval = null;
   let activeBatch = null;
-
-  // Toggle modes
-  function updateMode() {
-    const isBatch = modeBatch ? modeBatch.checked : true;
-    if (batchModeControls) {
-      if (isBatch) batchModeControls.classList.remove('hidden');
-      else batchModeControls.classList.add('hidden');
-    }
-    if (singleModeControls) {
-      if (isBatch) singleModeControls.classList.add('hidden');
-      else singleModeControls.classList.remove('hidden');
-    }
-  }
-
-  if (modeBatch) modeBatch.addEventListener('change', updateMode);
-  if (modeSingle) modeSingle.addEventListener('change', updateMode);
 
   // Extract non-blank trimmed lines from textarea
   function getBatchUrls() {
@@ -446,14 +423,26 @@ function setupAdHocForm() {
   // Initial count render
   updateBatchCount();
 
+  // Helper to ensure URL has an explicit protocol, defaulting to https:// if omitted
+  function resolveUrlProtocol(raw) {
+    if (typeof raw !== 'string') return '';
+    const trimmed = raw.trim();
+    if (!trimmed) return '';
+
+    const hasScheme = /^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//.test(trimmed) ||
+                      /^(javascript|data|vbscript|mailto|about|blob):/i.test(trimmed);
+    return hasScheme ? trimmed : `https://${trimmed}`;
+  }
+
   // Client-side URL normalization for duplicate checking (mirrors backend ScopeResolver rules)
   function clientNormalizeUrl(raw) {
-    const parsed = new URL(raw);
+    const urlToParse = resolveUrlProtocol(raw);
+    const parsed = new URL(urlToParse);
     let port = parsed.port;
     if ((parsed.protocol === 'http:' && port === '80') || (parsed.protocol === 'https:' && port === '443')) {
       port = '';
     }
-    let pathname = parsed.pathname;
+    let pathname = parsed.pathname || '/';
     if (pathname.length > 1 && pathname.endsWith('/')) {
       pathname = pathname.replace(/\/+$/, '');
       if (pathname === '') {
@@ -461,7 +450,9 @@ function setupAdHocForm() {
       }
     }
     const host = parsed.hostname.toLowerCase() + (port ? `:${port}` : '');
-    return `${parsed.protocol}//${host}${pathname}${parsed.search}`;
+    const protocol = parsed.protocol.toLowerCase();
+    const search = parsed.search || '';
+    return `${protocol}//${host}${pathname}${search}`;
   }
 
   // Form submission
@@ -476,79 +467,73 @@ function setupAdHocForm() {
       return;
     }
 
-    const isBatch = modeBatch ? modeBatch.checked : true;
-    let payload = { validators };
+    const urls = getBatchUrls();
+    if (urls.length === 0) {
+      alert('Please enter at least one website URL in the textarea.');
+      if (batchUrlsInput) batchUrlsInput.focus();
+      return;
+    }
+    if (urls.length > MAX_BATCH_SIZE) {
+      alert(`Batch size cannot exceed ${MAX_BATCH_SIZE} URLs. You currently have ${urls.length} URLs.`);
+      return;
+    }
 
-    if (isBatch) {
-      const urls = getBatchUrls();
-      if (urls.length === 0) {
-        alert('Please enter at least one website URL in the batch textarea.');
-        if (batchUrlsInput) batchUrlsInput.focus();
-        return;
-      }
-      if (urls.length > MAX_BATCH_SIZE) {
-        alert(`Batch size cannot exceed ${MAX_BATCH_SIZE} URLs. You currently have ${urls.length} URLs.`);
-        return;
-      }
-
-      // Validate each URL syntax & protocol
-      const seenNormalized = new Set();
-      for (let i = 0; i < urls.length; i++) {
-        const item = urls[i];
-        let parsed;
-        try {
-          parsed = new URL(item);
-        } catch (err) {
-          alert(`Invalid URL format on line ${i + 1}: "${item}". Please ensure it includes http:// or https://.`);
-          return;
-        }
-        if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
-          alert(`Unsupported protocol on line ${i + 1}: "${item}". Only http: and https: protocols are supported.`);
-          return;
-        }
-
-        const normalized = clientNormalizeUrl(item);
-        if (seenNormalized.has(normalized)) {
-          alert(`Duplicate URL detected on line ${i + 1}: "${item}". Each URL in a batch must be distinct.`);
-          return;
-        }
-        seenNormalized.add(normalized);
-      }
-
-      payload.urls = urls;
-      activeBatch = urls.map(u => {
-        let label = u;
-        try {
-          label = new URL(u).hostname;
-        } catch (e) {}
-        return {
-          websiteId: label,
-          name: label,
-          url: u
-        };
-      });
-    } else {
-      const url = urlInput ? urlInput.value.trim() : '';
-      if (!url) {
-        alert('Please enter a website URL.');
-        if (urlInput) urlInput.focus();
-        return;
-      }
+    // Validate each URL syntax & protocol
+    const seenNormalized = new Set();
+    const resolvedUrls = [];
+    for (let i = 0; i < urls.length; i++) {
+      const item = urls[i];
+      const withProtocol = resolveUrlProtocol(item);
       let parsed;
       try {
-        parsed = new URL(url);
+        parsed = new URL(withProtocol);
       } catch (err) {
-        alert(`Invalid URL format: "${url}". Please ensure it includes http:// or https://.`);
+        alert(`Invalid URL format on line ${i + 1}: "${item}". Please enter a valid website domain or URL.`);
         return;
       }
       if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
-        alert(`Unsupported protocol: "${url}". Only http: and https: protocols are supported.`);
+        alert(`Unsupported protocol on line ${i + 1}: "${item}". Only http: and https: protocols are supported.`);
         return;
       }
 
-      payload.url = url;
-      activeBatch = null;
+      const host = parsed.hostname.toLowerCase();
+      const isLocalhost = host === 'localhost';
+      const isIp = /^(\d{1,3}\.){3}\d{1,3}$/.test(host) || host.startsWith('[');
+      const hasValidDomainStructure = host.includes('.') && !host.startsWith('.') && !host.endsWith('.');
+
+      if (!isLocalhost && !isIp && !hasValidDomainStructure) {
+        alert(`Invalid URL format on line ${i + 1}: "${item}". Please enter a valid website domain or URL.`);
+        return;
+      }
+
+      let normalized;
+      try {
+        normalized = clientNormalizeUrl(withProtocol);
+      } catch (err) {
+        alert(`Invalid URL format on line ${i + 1}: "${item}".`);
+        return;
+      }
+
+      if (seenNormalized.has(normalized)) {
+        alert(`Duplicate URL detected on line ${i + 1}: "${item}". Each URL must be distinct.`);
+        return;
+      }
+      seenNormalized.add(normalized);
+      resolvedUrls.push(withProtocol);
     }
+
+    const payload = { urls: resolvedUrls, validators };
+    activeBatch = resolvedUrls.map(u => {
+      let label = u;
+      try {
+        label = new URL(u).hostname;
+      } catch (e) {}
+      return {
+        websiteId: label,
+        name: label,
+        url: u
+      };
+    });
 
     submitBtn.disabled = true;
     statusContainer.classList.remove('hidden');
@@ -576,7 +561,7 @@ function setupAdHocForm() {
       currentStatus.textContent = data.status;
       currentStatus.className = 'badge badge-' + data.status.toLowerCase();
 
-      if (activeBatch && activeBatch.length > 1) {
+      if (activeBatch && activeBatch.length > 0) {
         renderProvisionalBatchCards(activeBatch, 'Pending');
         executionResult.classList.remove('hidden');
       }
@@ -616,13 +601,13 @@ function setupAdHocForm() {
   }
 
   function renderProvisionalBatchCards(websites, statusText) {
-    if (!websites || websites.length <= 1) return;
+    if (!websites || websites.length === 0) return;
     const isPending = statusText.toLowerCase() === 'pending';
     const badgeClass = isPending ? 'badge-pending' : 'badge-running';
     let html = `
       <div class="batch-results-container">
         <div class="batch-results-header">
-          <span>Websites in this Batch (${websites.length})</span>
+          <span>Websites in this Execution (${websites.length})</span>
         </div>
         <div class="batch-websites-grid">
     `;
@@ -655,14 +640,14 @@ function setupAdHocForm() {
   }
 
   function renderBatchFailed(websites) {
-    if (!websites || websites.length <= 1) {
+    if (!websites || websites.length === 0) {
       executionAction.innerHTML = '<div style="color: var(--danger); margin-top: 0.5rem;">Execution failed unexpectedly.</div>';
       return;
     }
     let html = `
       <div class="batch-results-container">
         <div class="batch-results-header">
-          <span>Websites in this Batch (${websites.length})</span>
+          <span>Websites in this Execution (${websites.length})</span>
         </div>
         <div class="batch-websites-grid">
     `;
@@ -698,11 +683,11 @@ function setupAdHocForm() {
     const results = data.results || [];
     const runId = data.execution?.runId || '';
 
-    if (websites.length > 1) {
+    if (websites.length >= 1) {
       let html = `
         <div class="batch-results-container">
           <div class="batch-results-header">
-            <span>Websites in this Batch (${websites.length})</span>
+            <span>Websites in this Execution (${websites.length})</span>
           </div>
           <div class="batch-websites-grid">
       `;
@@ -760,9 +745,6 @@ function setupAdHocForm() {
 
       html += `</div></div>`;
       executionAction.innerHTML = html;
-    } else if (websites.length === 1) {
-      const siteId = websites[0].websiteId;
-      executionAction.innerHTML = `<button type="button" onclick="openWebsiteQaResult('${escapeHTML(siteId)}', '${escapeHTML(runId)}')">View Detailed Results</button>`;
     } else {
       executionAction.innerHTML = '';
     }
@@ -779,10 +761,10 @@ function setupAdHocForm() {
         currentStatus.textContent = data.status;
         currentStatus.className = 'badge badge-' + data.status.toLowerCase();
 
-        if (data.status === 'RUNNING' && activeBatch && activeBatch.length > 1) {
+        if (data.status === 'RUNNING' && activeBatch && activeBatch.length > 0) {
           renderProvisionalBatchCards(activeBatch, 'Running');
           executionResult.classList.remove('hidden');
-        } else if (data.status === 'QUEUED' && activeBatch && activeBatch.length > 1) {
+        } else if (data.status === 'QUEUED' && activeBatch && activeBatch.length > 0) {
           renderProvisionalBatchCards(activeBatch, 'Pending');
           executionResult.classList.remove('hidden');
         } else if (data.status === 'FAILED') {

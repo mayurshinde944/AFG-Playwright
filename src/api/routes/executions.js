@@ -83,7 +83,8 @@ router.post('/', async (req, res) => {
           return res.status(400).json({ error: `Duplicate URL detected in batch: ${item}` });
         }
         seenNormalized.add(normalized);
-        normalizedUrls.push(item.trim());
+        const resolvedUrl = /^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//.test(item.trim()) ? item.trim() : normalized;
+        normalizedUrls.push(resolvedUrl);
       }
 
       requestArgs.scope = { type: 'adhoc', urls: normalizedUrls };
@@ -122,12 +123,14 @@ router.post('/', async (req, res) => {
       if (typeof url !== 'string' || url.trim() === '') {
         return res.status(400).json({ error: 'url must be a non-empty string' });
       }
+      let normalized;
       try {
-        ScopeResolver.normalizeUrl(url);
+        normalized = ScopeResolver.normalizeUrl(url);
       } catch (err) {
         return res.status(400).json({ error: err.message });
       }
-      requestArgs.scope = { type: 'adhoc', url: url.trim() };
+      const resolvedUrl = /^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//.test(url.trim()) ? url.trim() : normalized;
+      requestArgs.scope = { type: 'adhoc', url: resolvedUrl };
     }
 
     const request = new ExecutionRequest(requestArgs);

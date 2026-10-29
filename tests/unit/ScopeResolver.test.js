@@ -98,6 +98,21 @@ describe('ScopeResolver', () => {
       expect(() => ScopeResolver.normalizeUrl('not-a-valid-url')).toThrow('Invalid ad-hoc URL provided: not-a-valid-url');
       expect(() => ScopeResolver.normalizeUrl('')).toThrow();
     });
+
+    it('should automatically prepend https:// when protocol is missing', () => {
+      expect(ScopeResolver.normalizeUrl('example.com')).toBe('https://example.com/');
+      expect(ScopeResolver.normalizeUrl('elementor.staging-smartonline.com.au')).toBe('https://elementor.staging-smartonline.com.au/');
+      expect(ScopeResolver.normalizeUrl('example.com/about')).toBe('https://example.com/about');
+      expect(ScopeResolver.normalizeUrl('example.com/about?tab=1')).toBe('https://example.com/about?tab=1');
+      expect(ScopeResolver.normalizeUrl('example.com:8080/path')).toBe('https://example.com:8080/path');
+    });
+
+    it('should preserve explicit http and https protocols case-insensitively', () => {
+      expect(ScopeResolver.normalizeUrl('http://example.com')).toBe('http://example.com/');
+      expect(ScopeResolver.normalizeUrl('https://example.com')).toBe('https://example.com/');
+      expect(ScopeResolver.normalizeUrl('HTTP://EXAMPLE.COM')).toBe('http://example.com/');
+      expect(ScopeResolver.normalizeUrl('HTTPS://EXAMPLE.COM')).toBe('https://example.com/');
+    });
   });
 
   describe('Ad-Hoc Scope Multi-URL Resolution', () => {
@@ -162,17 +177,82 @@ describe('ScopeResolver', () => {
       expect(() => ScopeResolver.resolve(req, allWebsites)).toThrow('Invalid ad-hoc URL provided: invalid-url-string');
     });
 
-    it('should preserve backward compatibility for single url ad-hoc scope', () => {
+    it('should detect duplicate URLs when protocol is omitted for one and https is specified for the other', () => {
       const req = {
         scope: {
           type: 'adhoc',
-          url: 'https://example.com'
+          urls: ['example.com', 'https://example.com/']
+        }
+      };
+      expect(() => ScopeResolver.resolve(req, allWebsites)).toThrow(/Duplicate URL detected in batch: https:\/\/example.com\//);
+    });
+
+    it('should allow same domain with different explicit protocols (http vs https)', () => {
+      const req = {
+        scope: {
+          type: 'adhoc',
+          urls: ['http://example.com', 'https://example.com']
+        }
+      };
+      const resolved = ScopeResolver.resolve(req, allWebsites);
+      expect(resolved).toHaveLength(2);
+      expect(resolved[0].url).toBe('http://example.com');
+      expect(resolved[1].url).toBe('https://example.com');
+    });
+
+    it('should resolve a mixed batch of URLs with and without protocols', () => {
+      const req = {
+        scope: {
+          type: 'adhoc',
+          urls: [
+            'example.com',
+            'http://test.com',
+            'https://another.com/about'
+          ]
+        }
+      };
+      const resolved = ScopeResolver.resolve(req, allWebsites);
+      expect(resolved).toHaveLength(3);
+      expect(resolved[0].url).toBe('https://example.com/');
+      expect(resolved[1].url).toBe('http://test.com');
+      expect(resolved[2].url).toBe('https://another.com/about');
+    });
+
+    it('should resolve a single-item urls batch without protocol', () => {
+      const req = {
+        scope: {
+          type: 'adhoc',
+          urls: ['example.com']
         }
       };
       const resolved = ScopeResolver.resolve(req, allWebsites);
       expect(resolved).toHaveLength(1);
       expect(resolved[0].id).toBe('adhoc-example-com');
-      expect(resolved[0].url).toBe('https://example.com');
+      expect(resolved[0].url).toBe('https://example.com/');
+    });
+
+    it('should preserve backward compatibility for single url ad-hoc scope with and without protocol', () => {
+      const reqWithProtocol = {
+        scope: {
+          type: 'adhoc',
+          url: 'https://example.com'
+        }
+      };
+      const resolvedWith = ScopeResolver.resolve(reqWithProtocol, allWebsites);
+      expect(resolvedWith).toHaveLength(1);
+      expect(resolvedWith[0].id).toBe('adhoc-example-com');
+      expect(resolvedWith[0].url).toBe('https://example.com');
+
+      const reqWithoutProtocol = {
+        scope: {
+          type: 'adhoc',
+          url: 'example.com'
+        }
+      };
+      const resolvedWithout = ScopeResolver.resolve(reqWithoutProtocol, allWebsites);
+      expect(resolvedWithout).toHaveLength(1);
+      expect(resolvedWithout[0].id).toBe('adhoc-example-com');
+      expect(resolvedWithout[0].url).toBe('https://example.com/');
     });
   });
 });
