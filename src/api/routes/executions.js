@@ -25,10 +25,15 @@ registerValidators(globalRegistry);
 
 router.post('/', async (req, res) => {
   try {
-    const { url, websiteId, validators } = req.body;
+    const { url, websiteId, websites, validators } = req.body;
     
-    if (!url && !websiteId) {
-      return res.status(400).json({ error: 'Either url or websiteId is required' });
+    if (!url && !websiteId && !websites) {
+      return res.status(400).json({ error: 'Either websites, websiteId, or url is required' });
+    }
+
+    const targetTypes = [url ? 'url' : null, websiteId ? 'websiteId' : null, websites !== undefined ? 'websites' : null].filter(Boolean);
+    if (targetTypes.length > 1) {
+      return res.status(400).json({ error: 'Specify only one of websites, websiteId, or url' });
     }
     
     if (!validators || !Array.isArray(validators) || validators.length === 0) {
@@ -43,14 +48,45 @@ router.post('/', async (req, res) => {
     }
 
     const config = ConfigurationManager.resolve({}, {});
-    
-    const requestArgs = { mode: 'execute' };
-    if (url) {
-      requestArgs.scope = { type: 'adhoc', url };
+    const requestArgs = { mode: 'execute', validators };
+
+    if (websites !== undefined) {
+      if (!Array.isArray(websites)) {
+        return res.status(400).json({ error: 'websites must be an array of website identifiers' });
+      }
+      if (websites.length === 0) {
+        return res.status(400).json({ error: 'websites array cannot be empty' });
+      }
+      if (websites.length > 10) {
+        return res.status(400).json({ error: 'Batch size exceeds maximum limit of 10 websites' });
+      }
+
+      const normalizedIds = [];
+      const seen = new Set();
+      for (const item of websites) {
+        if (typeof item !== 'string' || item.trim() === '') {
+          return res.status(400).json({ error: 'websites must contain valid non-empty string identifiers' });
+        }
+        const trimmed = item.trim();
+        if (seen.has(trimmed)) {
+          return res.status(400).json({ error: 'Duplicate website identifiers are not allowed in a batch' });
+        }
+        seen.add(trimmed);
+        normalizedIds.push(trimmed);
+      }
+
+      requestArgs.scope = { type: 'specific', websites: normalizedIds };
+    } else if (websiteId) {
+      if (typeof websiteId !== 'string' || websiteId.trim() === '') {
+        return res.status(400).json({ error: 'websiteId must be a non-empty string' });
+      }
+      requestArgs.scope = { type: 'specific', websites: [websiteId.trim()] };
     } else {
-      requestArgs.scope = { type: 'specific', websites: [websiteId] };
+      if (typeof url !== 'string' || url.trim() === '') {
+        return res.status(400).json({ error: 'url must be a non-empty string' });
+      }
+      requestArgs.scope = { type: 'adhoc', url: url.trim() };
     }
-    requestArgs.validators = validators;
 
     const request = new ExecutionRequest(requestArgs);
     const reqErrors = request.validate();

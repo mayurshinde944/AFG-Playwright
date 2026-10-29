@@ -36,20 +36,20 @@ async function loadSummary(date = null) {
       const errData = await res.json().catch(() => ({}));
       throw new Error(errData.error || 'Failed to fetch summary');
     }
-    
+
     const data = await res.json();
-    
+
     const todayStr = new Date().toISOString().split('T')[0];
     const displayDate = (!date || date === todayStr) ? "Today" : date;
     document.getElementById('summaryHeading').textContent = `${displayDate}'s Summary`;
     document.getElementById('websiteTestsHeading').textContent = `${displayDate}'s Website Tests`;
-    
+
     document.getElementById('statTotalTested').textContent = data.summary.totalTested;
     document.getElementById('statPassed').textContent = data.summary.passed;
     document.getElementById('statFailed').textContent = data.summary.failed;
     document.getElementById('statWarnings').textContent = data.summary.warnings;
-    
-    document.getElementById('statNotTested').textContent = 
+
+    document.getElementById('statNotTested').textContent =
       data.summary.notTested !== null ? data.summary.notTested : 'N/A';
 
     renderWebsiteTests(data.websitesTestedToday || []);
@@ -153,7 +153,7 @@ function renderQaReport(res) {
   const metrics = res.metrics || {};
   const pages = res.pages || details.pageResults || [];
 
-  switch(res.validatorName.toLowerCase()) {
+  switch (res.validatorName.toLowerCase()) {
     case 'dns':
       html += `<h4 style="margin-bottom: 0.5rem; color: var(--text-muted); text-transform: uppercase;">DNS Information</h4>`;
       let dnsRows = '';
@@ -207,11 +207,11 @@ function renderQaReport(res) {
       html += `<h4 style="margin-bottom: 1rem; color: var(--text-muted); text-transform: uppercase;">Pages Tested</h4>`;
       html += renderPages(pages, 'visual');
       break;
-      
+
     default:
       if (pages.length > 0) {
-         html += `<h4 style="margin-bottom: 1rem; color: var(--text-muted); text-transform: uppercase;">Pages Tested</h4>`;
-         html += renderPages(pages, res.validatorName.toLowerCase());
+        html += `<h4 style="margin-bottom: 1rem; color: var(--text-muted); text-transform: uppercase;">Pages Tested</h4>`;
+        html += renderPages(pages, res.validatorName.toLowerCase());
       }
       break;
   }
@@ -219,9 +219,47 @@ function renderQaReport(res) {
   return html;
 }
 
+function toVisualImageUrl(filePath) {
+  if (!filePath) return null;
+  const normalized = filePath.replace(/\\/g, '/');
+  const match = normalized.match(/\/artifacts\/visual\/(baselines|actuals|diffs)\/([^/]+)\/([^/]+\.png)$/i);
+  if (!match) return null;
+  return `/api/dashboard/visual/${encodeURIComponent(match[1])}/${encodeURIComponent(match[2])}/${encodeURIComponent(match[3])}`;
+}
+
+function handleImageError(img) {
+  if (!img) return;
+  const link = img.closest('a');
+
+  let card = (link || img).parentElement;
+  while (card && card !== document.body) {
+    const viewLink = Array.from(card.querySelectorAll('a')).find(
+      a => a !== link && a.textContent.toLowerCase().includes('view full size')
+    );
+    if (viewLink) {
+      viewLink.style.display = 'none';
+      break;
+    }
+    if (card.parentElement && card.parentElement.style && card.parentElement.style.display === 'grid') {
+      break;
+    }
+    card = card.parentElement;
+  }
+
+  const placeholder = document.createElement('div');
+  placeholder.style.cssText = 'padding: 1.5rem 1rem; text-align: center; color: var(--text-muted); font-size: 0.85rem; background: rgba(0,0,0,0.02); border-radius: 4px; border: 1px dashed var(--border-color);';
+  placeholder.textContent = 'Image file is no longer available';
+
+  if (link) {
+    link.replaceWith(placeholder);
+  } else {
+    img.replaceWith(placeholder);
+  }
+}
+
 function renderPages(pages, type) {
   if (!pages || pages.length === 0) return '<p>No pages were tested.</p>';
-  
+
   let html = '';
   pages.forEach(p => {
     html += `<div style="margin-bottom: 1.5rem; padding: 1rem; background-color: var(--bg-color); border-radius: 6px; border: 1px solid var(--border-color);">`;
@@ -229,43 +267,98 @@ function renderPages(pages, type) {
     html += `<span class="badge badge-${escapeHTML(p.status?.toLowerCase() || 'unknown')}">${escapeHTML(p.status || 'UNKNOWN')}</span>`;
     html += `<span style="font-weight: 600; word-break: break-all;">${escapeHTML(p.url)}</span>`;
     html += `</div>`;
-    
+
     let metaInfo = [];
     if (p.finalUrl && p.finalUrl !== p.url) metaInfo.push(`Final URL: ${escapeHTML(p.finalUrl)}`);
     if (p.retryAttempts > 0) metaInfo.push(`Retries: ${escapeHTML(p.retryAttempts)}`);
-    
+
     if (type === 'responsive' || type === 'visual') {
-       if (p.viewport) metaInfo.push(`Viewport: ${escapeHTML(p.viewport.name || '')} (${escapeHTML(p.viewport.width)}x${escapeHTML(p.viewport.height)})`);
+      if (p.viewport) metaInfo.push(`Viewport: ${escapeHTML(p.viewport.name || '')} (${escapeHTML(p.viewport.width)}x${escapeHTML(p.viewport.height)})`);
     }
-    
+
     if (type === 'cross-browser') {
-       if (p.browser) metaInfo.push(`Browser: ${escapeHTML(p.browser)}`);
-       if (p.context && p.context.affectedBrowsers) {
-           metaInfo.push(`Affected Browsers: ${escapeHTML(p.context.affectedBrowsers.join(', '))}`);
-       }
+      if (p.browser) metaInfo.push(`Browser: ${escapeHTML(p.browser)}`);
+      if (p.context && p.context.affectedBrowsers) {
+        metaInfo.push(`Affected Browsers: ${escapeHTML(p.context.affectedBrowsers.join(', '))}`);
+      }
     }
-    
+
     if (type === 'visual') {
-       if (p.metrics?.mismatchPercentage !== undefined) metaInfo.push(`Mismatch: ${escapeHTML(p.metrics.mismatchPercentage)}%`);
-       if (p.metrics?.diffPixels !== undefined) metaInfo.push(`Diff Pixels: ${escapeHTML(p.metrics.diffPixels)}`);
+      const isMissingBaseline = p.issues?.some(i => i && (i.type === 'missing_baseline' || i.message?.includes('No baseline exists')));
+      if (isMissingBaseline) {
+        metaInfo.push(`<span class="badge badge-warning" style="vertical-align: middle;">Baseline: Pending Promotion</span>`);
+      } else {
+        if (p.metrics?.mismatchPercentage !== undefined) metaInfo.push(`Mismatch: ${escapeHTML(p.metrics.mismatchPercentage)}%`);
+        if (p.metrics?.diffPixels !== undefined) metaInfo.push(`Diff Pixels: ${escapeHTML(p.metrics.diffPixels)}`);
+      }
     }
-    
+
     if (metaInfo.length > 0) {
-       html += `<div style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 0.5rem;">${metaInfo.join(' | ')}</div>`;
+      html += `<div style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 0.5rem;">${metaInfo.join(' | ')}</div>`;
     }
-    
+
     if (p.issues && p.issues.length > 0) {
       html += `<div style="margin-top: 0.5rem;"><strong>Issues:</strong><ul style="margin-top: 0.25rem; margin-bottom: 0; padding-left: 1.5rem; font-size: 0.9rem;">`;
       p.issues.forEach(issue => {
         let issueContext = '';
         if (issue.context?.affectedBrowsers && type === 'cross-browser') {
-           issueContext = ` <em>(Browsers: ${escapeHTML(issue.context.affectedBrowsers.join(', '))})</em>`;
+          issueContext = ` <em>(Browsers: ${escapeHTML(issue.context.affectedBrowsers.join(', '))})</em>`;
         }
         html += `<li>${escapeHTML(issue.message)}${issueContext}</li>`;
       });
       html += `</ul></div>`;
     }
-    
+
+    if (type === 'visual' && p.metrics) {
+      const isMissingBaseline = p.issues?.some(i => i && (i.type === 'missing_baseline' || i.message?.includes('No baseline exists')));
+      const actualUrl = toVisualImageUrl(p.metrics.actualPath);
+      const baselineUrl = !isMissingBaseline ? toVisualImageUrl(p.metrics.baselinePath) : null;
+      const diffUrl = toVisualImageUrl(p.metrics.diffPath);
+
+      html += `<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 1rem; margin-top: 1rem;">`;
+
+      if (baselineUrl) {
+        html += `
+          <div style="border: 1px solid var(--border-color); border-radius: 6px; padding: 0.75rem; background: var(--card-bg);">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+              <strong style="font-size: 0.85rem; color: var(--text-muted); text-transform: uppercase;">Baseline Screenshot</strong>
+              <a href="${baselineUrl}" target="_blank" style="font-size: 0.75rem; color: var(--primary-color); text-decoration: none;">View Full Size &UpperRightArrow;</a>
+            </div>
+            <a href="${baselineUrl}" target="_blank"><img src="${baselineUrl}" alt="Baseline Screenshot" style="width: 100%; max-height: 280px; object-fit: contain; background: #f8fafc; border: 1px solid var(--border-color); border-radius: 4px; display: block;" /></a>
+          </div>`;
+      } else {
+        html += `
+          <div style="border: 1px dashed var(--border-color); border-radius: 6px; padding: 1.5rem 1rem; text-align: center; color: var(--text-muted); display: flex; flex-direction: column; justify-content: center; align-items: center; background: rgba(0,0,0,0.02);">
+            <strong style="font-size: 0.85rem; text-transform: uppercase; color: var(--text-muted); margin-bottom: 0.5rem;">Baseline Screenshot</strong>
+            <p style="font-size: 0.85rem; margin: 0; line-height: 1.4;">Baseline not established — actual screenshot saved for manual promotion</p>
+          </div>`;
+      }
+
+      if (actualUrl) {
+        html += `
+          <div style="border: 1px solid var(--border-color); border-radius: 6px; padding: 0.75rem; background: var(--card-bg);">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+              <strong style="font-size: 0.85rem; color: var(--text-muted); text-transform: uppercase;">Actual Screenshot</strong>
+              <a href="${actualUrl}" target="_blank" style="font-size: 0.75rem; color: var(--primary-color); text-decoration: none;">View Full Size &UpperRightArrow;</a>
+            </div>
+            <a href="${actualUrl}" target="_blank"><img src="${actualUrl}" alt="Actual Screenshot" onerror="handleImageError(this)" style="width: 100%; max-height: 280px; object-fit: contain; background: #f8fafc; border: 1px solid var(--border-color); border-radius: 4px; display: block;" /></a>
+          </div>`;
+      }
+
+      if (diffUrl) {
+        html += `
+          <div style="border: 1px solid var(--danger); border-radius: 6px; padding: 0.75rem; background: var(--card-bg);">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+              <strong style="font-size: 0.85rem; color: var(--danger); text-transform: uppercase;">Visual Diff (${escapeHTML(p.metrics.mismatchPercentage)}%)</strong>
+              <a href="${diffUrl}" target="_blank" style="font-size: 0.75rem; color: var(--danger); text-decoration: none;">View Full Size &UpperRightArrow;</a>
+            </div>
+            <a href="${diffUrl}" target="_blank"><img src="${diffUrl}" alt="Visual Diff" onerror="handleImageError(this)" style="width: 100%; max-height: 280px; object-fit: contain; background: #f8fafc; border: 1px solid var(--border-color); border-radius: 4px; display: block;" /></a>
+          </div>`;
+      }
+
+      html += `</div>`;
+    }
+
     html += `</div>`;
   });
   return html;
@@ -284,18 +377,239 @@ function setupAdHocForm() {
   const executionResult = document.getElementById('executionResult');
   const executionAction = document.getElementById('executionAction');
 
-  let pollInterval = null;
+  // Mode radio buttons and containers
+  const modeInventory = document.getElementById('modeInventory');
+  const modeCustom = document.getElementById('modeCustom');
+  const inventoryModeControls = document.getElementById('inventoryModeControls');
+  const customModeControls = document.getElementById('customModeControls');
 
+  // Inventory search and selection elements
+  const searchInput = document.getElementById('inventorySearchInput');
+  const searchDropdown = document.getElementById('searchResultsDropdown');
+  const selectionBadge = document.getElementById('selectionCountBadge');
+  const selectedListContainer = document.getElementById('selectedWebsitesList');
+
+  const MAX_BATCH_SIZE = 10;
+  let selectedWebsites = [];
+  let searchTimeout = null;
+  let pollInterval = null;
+  let activeBatch = null;
+
+  // Toggle modes
+  function updateMode() {
+    if (modeInventory && modeInventory.checked) {
+      if (inventoryModeControls) inventoryModeControls.classList.remove('hidden');
+      if (customModeControls) customModeControls.classList.add('hidden');
+    } else {
+      if (inventoryModeControls) inventoryModeControls.classList.add('hidden');
+      if (customModeControls) customModeControls.classList.remove('hidden');
+    }
+  }
+
+  if (modeInventory) modeInventory.addEventListener('change', updateMode);
+  if (modeCustom) modeCustom.addEventListener('change', updateMode);
+
+  // Render selected websites chips
+  function renderSelectedWebsites() {
+    if (!selectedListContainer) return;
+
+    if (selectionBadge) {
+      selectionBadge.textContent = `Selected: ${selectedWebsites.length} / ${MAX_BATCH_SIZE}`;
+      if (selectedWebsites.length >= MAX_BATCH_SIZE) {
+        selectionBadge.className = 'badge badge-warning';
+      } else {
+        selectionBadge.className = 'badge';
+        selectionBadge.style.cssText = 'background: #e2e8f0; color: #334155;';
+      }
+    }
+
+    selectedListContainer.innerHTML = '';
+
+    if (selectedWebsites.length === 0) {
+      const placeholder = document.createElement('span');
+      placeholder.id = 'noWebsitesPlaceholder';
+      placeholder.style.cssText = 'color: var(--text-muted); font-size: 0.875rem;';
+      placeholder.textContent = 'No websites selected yet. Search above to add up to 10 websites.';
+      selectedListContainer.appendChild(placeholder);
+      return;
+    }
+
+    selectedWebsites.forEach(site => {
+      const chip = document.createElement('div');
+      chip.className = 'website-chip';
+
+      const idSpan = document.createElement('span');
+      idSpan.className = 'chip-id';
+      idSpan.textContent = site.id;
+
+      const descSpan = document.createElement('span');
+      descSpan.textContent = site.name && site.name !== site.id ? `(${site.name})` : '';
+
+      const removeBtn = document.createElement('button');
+      removeBtn.type = 'button';
+      removeBtn.className = 'chip-remove';
+      removeBtn.setAttribute('aria-label', `Remove ${site.id}`);
+      removeBtn.innerHTML = '&times;';
+      removeBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        removeWebsite(site.id);
+      });
+
+      chip.appendChild(idSpan);
+      if (descSpan.textContent) chip.appendChild(descSpan);
+      chip.appendChild(removeBtn);
+      selectedListContainer.appendChild(chip);
+    });
+  }
+
+  function addWebsite(site) {
+    if (selectedWebsites.length >= MAX_BATCH_SIZE) {
+      alert(`Maximum limit of ${MAX_BATCH_SIZE} websites reached.`);
+      return;
+    }
+    if (selectedWebsites.some(s => s.id === site.id)) {
+      alert(`Website "${site.id}" is already selected.`);
+      return;
+    }
+    selectedWebsites.push(site);
+    renderSelectedWebsites();
+    if (searchInput) searchInput.value = '';
+    if (searchDropdown) searchDropdown.classList.add('hidden');
+  }
+
+  function removeWebsite(siteId) {
+    selectedWebsites = selectedWebsites.filter(s => s.id !== siteId);
+    renderSelectedWebsites();
+  }
+
+  // Inventory Search Autocomplete
+  if (searchInput && searchDropdown) {
+    searchInput.addEventListener('input', () => {
+      if (searchTimeout) clearTimeout(searchTimeout);
+      const query = searchInput.value.trim();
+
+      if (!query) {
+        searchDropdown.classList.add('hidden');
+        searchDropdown.innerHTML = '';
+        return;
+      }
+
+      searchTimeout = setTimeout(async () => {
+        try {
+          const res = await fetch(`/api/dashboard/websites?q=${encodeURIComponent(query)}&limit=10`);
+          if (!res.ok) throw new Error('Search failed');
+          const data = await res.json();
+          const websites = data.websites || [];
+
+          searchDropdown.innerHTML = '';
+
+          if (websites.length === 0) {
+            const noResults = document.createElement('div');
+            noResults.className = 'search-result-item';
+            noResults.style.cssText = 'color: var(--text-muted); cursor: default;';
+            noResults.textContent = 'No matching inventory websites found';
+            searchDropdown.appendChild(noResults);
+          } else {
+            websites.forEach(site => {
+              const item = document.createElement('div');
+              item.className = 'search-result-item';
+
+              const isAlreadySelected = selectedWebsites.some(s => s.id === site.id);
+              const isAtLimit = selectedWebsites.length >= MAX_BATCH_SIZE;
+
+              const title = document.createElement('div');
+              title.style.cssText = 'font-weight: 500; display: flex; justify-content: space-between; align-items: center;';
+              title.textContent = site.name || site.id;
+
+              if (isAlreadySelected) {
+                const badge = document.createElement('span');
+                badge.className = 'badge';
+                badge.style.cssText = 'font-size: 0.7rem; background: #e2e8f0; color: #64748b;';
+                badge.textContent = 'Added';
+                title.appendChild(badge);
+                item.classList.add('disabled');
+              } else if (isAtLimit) {
+                const badge = document.createElement('span');
+                badge.className = 'badge badge-warning';
+                badge.style.cssText = 'font-size: 0.7rem;';
+                badge.textContent = 'Limit reached';
+                title.appendChild(badge);
+                item.classList.add('disabled');
+              }
+
+              const sub = document.createElement('div');
+              sub.style.cssText = 'font-size: 0.75rem; color: var(--text-muted);';
+              sub.textContent = `${site.id} — ${site.url}`;
+
+              item.appendChild(title);
+              item.appendChild(sub);
+
+              if (!isAlreadySelected && !isAtLimit) {
+                item.addEventListener('click', () => {
+                  addWebsite(site);
+                });
+              }
+
+              searchDropdown.appendChild(item);
+            });
+          }
+
+          searchDropdown.classList.remove('hidden');
+        } catch (e) {
+          console.error(e);
+        }
+      }, 250);
+    });
+
+    document.addEventListener('click', (e) => {
+      if (!searchInput.contains(e.target) && !searchDropdown.contains(e.target)) {
+        searchDropdown.classList.add('hidden');
+      }
+    });
+  }
+
+  // Initial render
+  renderSelectedWebsites();
+
+  // Form submission
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
-    
-    const url = document.getElementById('urlInput').value;
+
     const validatorCheckboxes = document.querySelectorAll('input[name="validator"]:checked');
     const validators = Array.from(validatorCheckboxes).map(cb => cb.value);
 
     if (validators.length === 0) {
       alert('Please select at least one validator.');
       return;
+    }
+
+    const isInventory = modeInventory && modeInventory.checked;
+    let payload = { validators };
+
+    if (isInventory) {
+      if (selectedWebsites.length === 0) {
+        alert('Please search and select at least one website from the inventory.');
+        return;
+      }
+      if (selectedWebsites.length > MAX_BATCH_SIZE) {
+        alert(`Batch size cannot exceed ${MAX_BATCH_SIZE} websites.`);
+        return;
+      }
+      payload.websites = selectedWebsites.map(s => s.id);
+      activeBatch = selectedWebsites.map(s => ({
+        websiteId: s.id,
+        name: s.name || s.id,
+        url: s.url
+      }));
+    } else {
+      const urlInput = document.getElementById('urlInput');
+      const url = urlInput ? urlInput.value.trim() : '';
+      if (!url) {
+        alert('Please enter a website URL.');
+        return;
+      }
+      payload.url = url;
+      activeBatch = null;
     }
 
     submitBtn.disabled = true;
@@ -311,11 +625,11 @@ function setupAdHocForm() {
       const res = await fetch('/api/executions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url, validators })
+        body: JSON.stringify(payload)
       });
 
       const data = await res.json();
-      
+
       if (!res.ok) {
         throw new Error(data.error || 'Failed to start execution');
       }
@@ -324,7 +638,12 @@ function setupAdHocForm() {
       currentStatus.textContent = data.status;
       currentStatus.className = 'badge badge-' + data.status.toLowerCase();
 
-      pollInterval = setInterval(() => pollStatus(data.runId, url), 3000);
+      if (activeBatch && activeBatch.length > 1) {
+        renderProvisionalBatchCards(activeBatch, 'Pending');
+        executionResult.classList.remove('hidden');
+      }
+
+      pollInterval = setInterval(() => pollStatus(data.runId), 3000);
 
     } catch (err) {
       alert(err.message);
@@ -333,36 +652,220 @@ function setupAdHocForm() {
     }
   });
 
-  async function pollStatus(runId, urlStr) {
+  function getWebsiteStatus(siteResults) {
+    if (!siteResults || siteResults.length === 0) return 'UNKNOWN';
+    let failCount = 0;
+    let errorCount = 0;
+    let warningCount = 0;
+    let passCount = 0;
+    let skipCount = 0;
+
+    for (const r of siteResults) {
+      const s = (r.status || '').toUpperCase();
+      if (s === 'FAIL') failCount++;
+      else if (s === 'ERROR') errorCount++;
+      else if (s === 'WARNING') warningCount++;
+      else if (s === 'PASS') passCount++;
+      else if (s === 'SKIP') skipCount++;
+    }
+
+    if (failCount > 0) return 'FAIL';
+    if (errorCount > 0) return 'ERROR';
+    if (warningCount > 0) return 'WARNING';
+    if (passCount > 0) return 'PASS';
+    if (skipCount > 0) return 'SKIP';
+    return 'UNKNOWN';
+  }
+
+  function renderProvisionalBatchCards(websites, statusText) {
+    if (!websites || websites.length <= 1) return;
+    const isPending = statusText.toLowerCase() === 'pending';
+    const badgeClass = isPending ? 'badge-pending' : 'badge-running';
+    let html = `
+      <div class="batch-results-container">
+        <div class="batch-results-header">
+          <span>Websites in this Batch (${websites.length})</span>
+        </div>
+        <div class="batch-websites-grid">
+    `;
+
+    websites.forEach(w => {
+      const displayName = w.name && w.name !== w.websiteId ? w.name : w.websiteId;
+      const subId = w.name && w.name !== w.websiteId ? `(${escapeHTML(w.websiteId)})` : '';
+      html += `
+        <div class="batch-website-card">
+          <div class="batch-card-header">
+            <div class="batch-card-title">
+              <strong>${escapeHTML(displayName)}</strong>
+              ${subId ? `<span class="batch-card-subid">${subId}</span>` : ''}
+            </div>
+            <span class="badge ${badgeClass}">${escapeHTML(statusText)}</span>
+          </div>
+          <div class="batch-card-url">
+            <a href="${escapeHTML(w.url)}" target="_blank" rel="noopener noreferrer">${escapeHTML(w.url)} &UpperRightArrow;</a>
+          </div>
+          <div class="batch-card-summary">
+            <span style="font-size: 0.85rem; color: var(--text-muted);">${isPending ? 'Queued in execution queue...' : 'Validation tests running...'}</span>
+            <button type="button" disabled style="opacity: 0.6; cursor: not-allowed; font-size: 0.8rem; padding: 0.25rem 0.75rem;">Pending Results</button>
+          </div>
+        </div>
+      `;
+    });
+
+    html += `</div></div>`;
+    executionAction.innerHTML = html;
+  }
+
+  function renderBatchFailed(websites) {
+    if (!websites || websites.length <= 1) {
+      executionAction.innerHTML = '<div style="color: var(--danger); margin-top: 0.5rem;">Execution failed unexpectedly.</div>';
+      return;
+    }
+    let html = `
+      <div class="batch-results-container">
+        <div class="batch-results-header">
+          <span>Websites in this Batch (${websites.length})</span>
+        </div>
+        <div class="batch-websites-grid">
+    `;
+
+    websites.forEach(w => {
+      const displayName = w.name && w.name !== w.websiteId ? w.name : w.websiteId;
+      const subId = w.name && w.name !== w.websiteId ? `(${escapeHTML(w.websiteId)})` : '';
+      html += `
+        <div class="batch-website-card">
+          <div class="batch-card-header">
+            <div class="batch-card-title">
+              <strong>${escapeHTML(displayName)}</strong>
+              ${subId ? `<span class="batch-card-subid">${subId}</span>` : ''}
+            </div>
+            <span class="badge badge-error">ERROR</span>
+          </div>
+          <div class="batch-card-url">
+            <a href="${escapeHTML(w.url)}" target="_blank" rel="noopener noreferrer">${escapeHTML(w.url)} &UpperRightArrow;</a>
+          </div>
+          <div class="batch-card-summary">
+            <span style="font-size: 0.85rem; color: var(--danger);">Execution failed before results could be saved.</span>
+          </div>
+        </div>
+      `;
+    });
+
+    html += `</div></div>`;
+    executionAction.innerHTML = html;
+  }
+
+  function renderCompletedResults(data) {
+    const websites = data.websites || [];
+    const results = data.results || [];
+    const runId = data.execution?.runId || '';
+
+    if (websites.length > 1) {
+      let html = `
+        <div class="batch-results-container">
+          <div class="batch-results-header">
+            <span>Websites in this Batch (${websites.length})</span>
+          </div>
+          <div class="batch-websites-grid">
+      `;
+
+      websites.forEach(w => {
+        const siteResults = results.filter(r => r.websiteId === w.websiteId);
+        const siteStatus = getWebsiteStatus(siteResults);
+        const displayName = w.name && w.name !== w.websiteId ? w.name : w.websiteId;
+        const subId = w.name && w.name !== w.websiteId ? `(${escapeHTML(w.websiteId)})` : '';
+
+        const totalCount = siteResults.length;
+        const passCount = siteResults.filter(r => r.status === 'PASS').length;
+        const warnCount = siteResults.filter(r => r.status === 'WARNING').length;
+        const failCount = siteResults.filter(r => r.status === 'FAIL').length;
+        const errCount = siteResults.filter(r => r.status === 'ERROR').length;
+
+        let countsHtml = `<span class="batch-count-item">Validators: <strong>${totalCount}</strong></span>`;
+        if (passCount > 0) countsHtml += `<span class="batch-count-item text-success">Pass: <strong>${passCount}</strong></span>`;
+        if (warnCount > 0) countsHtml += `<span class="batch-count-item text-warning">Warn: <strong>${warnCount}</strong></span>`;
+        if (failCount > 0) countsHtml += `<span class="batch-count-item text-danger">Fail: <strong>${failCount}</strong></span>`;
+        if (errCount > 0) countsHtml += `<span class="batch-count-item text-danger">Err: <strong>${errCount}</strong></span>`;
+
+        let validatorTagsHtml = '';
+        if (siteResults.length > 0) {
+          validatorTagsHtml = `<div class="batch-card-validators">` + siteResults.map(r => {
+            const vStatus = (r.status || 'UNKNOWN').toUpperCase();
+            return `<span class="badge badge-${escapeHTML(vStatus.toLowerCase())}" style="font-size: 0.7rem; padding: 0.15rem 0.4rem;">${escapeHTML(r.validatorName.toUpperCase())}: ${escapeHTML(vStatus)}</span>`;
+          }).join(' ') + `</div>`;
+        }
+
+        html += `
+          <div class="batch-website-card">
+            <div class="batch-card-header">
+              <div class="batch-card-title">
+                <strong>${escapeHTML(displayName)}</strong>
+                ${subId ? `<span class="batch-card-subid">${subId}</span>` : ''}
+              </div>
+              <span class="badge badge-${escapeHTML(siteStatus.toLowerCase())}">${escapeHTML(siteStatus)}</span>
+            </div>
+            <div class="batch-card-url">
+              <a href="${escapeHTML(w.url)}" target="_blank" rel="noopener noreferrer">${escapeHTML(w.url)} &UpperRightArrow;</a>
+            </div>
+            <div class="batch-card-summary">
+              <div class="batch-card-counts">
+                ${countsHtml}
+              </div>
+              ${validatorTagsHtml}
+            </div>
+            <div class="batch-card-action">
+              <button type="button" style="padding: 0.35rem 0.85rem; font-size: 0.85rem;" onclick="openWebsiteQaResult('${escapeHTML(w.websiteId)}', '${escapeHTML(runId)}')">View Detailed Results</button>
+            </div>
+          </div>
+        `;
+      });
+
+      html += `</div></div>`;
+      executionAction.innerHTML = html;
+    } else if (websites.length === 1) {
+      const siteId = websites[0].websiteId;
+      executionAction.innerHTML = `<button type="button" onclick="openWebsiteQaResult('${escapeHTML(siteId)}', '${escapeHTML(runId)}')">View Detailed Results</button>`;
+    } else {
+      executionAction.innerHTML = '';
+    }
+  }
+
+  async function pollStatus(runId) {
     try {
       const res = await fetch(`/api/executions/${runId}`);
       if (!res.ok) return;
 
       const data = await res.json();
-      
+
       if (data.status) {
         currentStatus.textContent = data.status;
         currentStatus.className = 'badge badge-' + data.status.toLowerCase();
+
+        if (data.status === 'RUNNING' && activeBatch && activeBatch.length > 1) {
+          renderProvisionalBatchCards(activeBatch, 'Running');
+          executionResult.classList.remove('hidden');
+        } else if (data.status === 'QUEUED' && activeBatch && activeBatch.length > 1) {
+          renderProvisionalBatchCards(activeBatch, 'Pending');
+          executionResult.classList.remove('hidden');
+        } else if (data.status === 'FAILED') {
+          clearInterval(pollInterval);
+          submitBtn.disabled = false;
+          currentStatus.textContent = 'FAILED';
+          currentStatus.className = 'badge badge-failed';
+          executionResult.classList.remove('hidden');
+          renderBatchFailed(activeBatch);
+        }
       } else if (data.execution && data.execution.status) {
         clearInterval(pollInterval);
         submitBtn.disabled = false;
         currentStatus.textContent = data.execution.status;
         currentStatus.className = 'badge badge-' + data.execution.status.toLowerCase();
-        
-        executionResult.classList.remove('hidden');
-        
-        // Find the website ID associated with this ad-hoc URL
-        let websiteIdToOpen = '';
-        if (data.websites && data.websites.length > 0) {
-          websiteIdToOpen = data.websites[0].websiteId;
-        }
 
-        if (websiteIdToOpen) {
-          executionAction.innerHTML = `<button onclick="openWebsiteQaResult('${escapeHTML(websiteIdToOpen)}', '${escapeHTML(data.execution.runId)}')">View Detailed Results</button>`;
-        } else {
-          executionAction.innerHTML = '';
-        }
-        
+        executionResult.classList.remove('hidden');
+
+        // Render detailed results action buttons for batch or single site
+        renderCompletedResults(data);
+
         loadSummary();
       }
     } catch (err) {
@@ -393,7 +896,7 @@ document.getElementById('websiteHistorySearch').addEventListener('keypress', (e)
 async function openWebsiteHistory(identifier) {
   const modal = document.getElementById('websiteHistoryModal');
   const body = document.getElementById('historyModalBody');
-  
+
   modal.showModal();
   body.innerHTML = '<p>Loading history...</p>';
 
@@ -403,7 +906,7 @@ async function openWebsiteHistory(identifier) {
       throw new Error(`Failed to load history: ${res.statusText}`);
     }
     const history = await res.json();
-    
+
     if (history.length === 0) {
       body.innerHTML = `<p>No history found for <strong>${escapeHTML(identifier)}</strong>.</p>`;
       return;
@@ -431,7 +934,7 @@ async function openWebsiteHistory(identifier) {
 
     for (const run of history) {
       const valStrings = run.validators.map(v => `${escapeHTML(v.validatorName)}: <span class="badge badge-${escapeHTML(v.status.toLowerCase())}" style="font-size: 0.7em; padding: 0.1em 0.3em;">${escapeHTML(v.status)}</span>`).join('<br>');
-      
+
       html += `
         <tr>
           <td>${escapeHTML(run.date)}</td>

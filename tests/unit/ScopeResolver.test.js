@@ -35,4 +35,21 @@ describe('ScopeResolver', () => {
     // Oldest should be second
     expect(resolved[1].id).toBe('2');
   });
+
+  it('should resolve multiple valid websites for SPECIFIC scope', () => {
+    const req = { scope: { type: 'specific', websites: ['1', '2'] } };
+    const resolved = ScopeResolver.resolve(req, allWebsites);
+    expect(resolved.length).toBe(2);
+    expect(resolved.map(w => w.id)).toEqual(['1', '2']);
+  });
+
+  it('should throw clear error when an identifier in SPECIFIC scope is not found', () => {
+    const req = { scope: { type: 'specific', websites: ['1', 'nonexistent-id'] } };
+    expect(() => ScopeResolver.resolve(req, allWebsites)).toThrow('Website not found in inventory: nonexistent-id');
+  });
+
+  it('should throw clear error listing multiple missing identifiers in SPECIFIC scope', () => {
+    const req = { scope: { type: 'specific', websites: ['missing-1', 'missing-2'] } };
+    expect(() => ScopeResolver.resolve(req, allWebsites)).toThrow('Websites not found in inventory: missing-1, missing-2');
+  });
 });

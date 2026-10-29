@@ -26,6 +26,7 @@ class ScopeResolver {
       }
       
       const specificSites = [];
+      const missingSites = [];
       for (const target of scope.websites) {
         const site = allWebsites.find(s => s.id === target || s.url === target || s.name === target);
         if (site) {
@@ -33,9 +34,17 @@ class ScopeResolver {
           specificSites.push(site);
         } else {
           // If a site is not found in the inventory, we can't test it
-          throw new Error(`Website not found in inventory: ${target}`);
+          missingSites.push(target);
         }
       }
+
+      if (missingSites.length > 0) {
+        if (missingSites.length === 1) {
+          throw new Error(`Website not found in inventory: ${missingSites[0]}`);
+        }
+        throw new Error(`Websites not found in inventory: ${missingSites.join(', ')}`);
+      }
+
       return specificSites;
     }
 

@@ -5,6 +5,7 @@ node_modules/
 reports/
 artifacts/
 coverage/
+test-results.json
 
 # Logs
 *.log

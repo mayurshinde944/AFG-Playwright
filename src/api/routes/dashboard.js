@@ -1,5 +1,7 @@
 'use strict';
 
+const fs = require('fs');
+const path = require('path');
 const express = require('express');
 const router = express.Router();
 const ConfigurationManager = require('../../core/ConfigurationManager');
@@ -154,6 +156,117 @@ router.get('/website/:identifier/history', async (req, res) => {
     const config = ConfigurationManager.resolve({}, {});
     const history = await ResultStore.getWebsiteHistory(decodeURIComponent(identifier), config);
     res.json(history);
+  } catch (err) {
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+router.get('/websites', async (req, res) => {
+  try {
+    const config = ConfigurationManager.resolve({}, {});
+    const inventoryPath = config.inventory?.path || './inventory/sample.csv';
+    const loader = new CsvExcelInventoryLoader(inventoryPath, {
+      logger: { info: () => {}, warn: () => {}, error: () => {} }
+    });
+    const allWebsites = await loader.loadWebsites();
+
+    const q = typeof req.query.q === 'string' ? req.query.q.trim().toLowerCase() : '';
+
+    const DEFAULT_LIMIT = 10;
+    const MAX_LIMIT = 50;
+    let limit = DEFAULT_LIMIT;
+    if (req.query.limit !== undefined) {
+      const parsed = parseInt(req.query.limit, 10);
+      if (!isNaN(parsed) && parsed > 0) {
+        limit = Math.min(parsed, MAX_LIMIT);
+      }
+    }
+
+    let matches = allWebsites;
+    if (q) {
+      matches = allWebsites.filter(w => {
+        const idMatch = w.id && w.id.toLowerCase().includes(q);
+        const nameMatch = w.name && w.name.toLowerCase().includes(q);
+        const urlMatch = w.url && w.url.toLowerCase().includes(q);
+        return Boolean(idMatch || nameMatch || urlMatch);
+      });
+    }
+
+    const limited = matches.slice(0, limit);
+    const sanitized = limited.map(w => ({
+      id: w.id,
+      name: w.name,
+      url: w.url,
+      active: w.isActive()
+    }));
+
+    res.json({
+      websites: sanitized,
+      total: matches.length
+    });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to load inventory websites' });
+  }
+});
+
+const ALLOWED_VISUAL_TYPES = new Set(['baselines', 'actuals', 'diffs']);
+
+router.get('/visual/:type/:websiteId/:filename', (req, res) => {
+  try {
+    const { type, websiteId, filename } = req.params;
+
+    // 1. Category allowlist check
+    if (!ALLOWED_VISUAL_TYPES.has(type)) {
+      return res.status(400).json({ error: 'Invalid visual image type' });
+    }
+
+    // 2. Strict format validation preventing path traversal
+    if (!/^[a-zA-Z0-9_\-\.]+$/.test(websiteId) || websiteId.includes('..')) {
+      return res.status(400).json({ error: 'Invalid website identifier' });
+    }
+    if (!/^[a-zA-Z0-9_]+\.png$/i.test(filename)) {
+      return res.status(400).json({ error: 'Invalid image filename' });
+    }
+
+    // 3. Resolve configured visual directories matching VisualValidator
+    const config = ConfigurationManager.resolve({}, {});
+    const visualConfig = config.visual || {};
+    const dirMap = {
+      baselines: visualConfig.baselinesDir || './artifacts/visual/baselines',
+      actuals: visualConfig.actualsDir || './artifacts/visual/actuals',
+      diffs: visualConfig.diffsDir || './artifacts/visual/diffs'
+    };
+
+    const baseDir = path.resolve(process.cwd(), dirMap[type]);
+    if (!fs.existsSync(baseDir)) {
+      return res.status(404).json({ error: 'Image not found' });
+    }
+
+    // 4. Lexical containment check
+    const targetFile = path.resolve(baseDir, websiteId, filename);
+    const lexicalRelative = path.relative(baseDir, targetFile);
+    if (lexicalRelative.startsWith('..') || path.isAbsolute(lexicalRelative)) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+
+    if (!fs.existsSync(targetFile)) {
+      return res.status(404).json({ error: 'Image not found' });
+    }
+
+    // 5. Canonical filesystem realpath check against symlink escapes
+    const realBaseDir = fs.realpathSync(baseDir);
+    const realTargetFile = fs.realpathSync(targetFile);
+    const realRelative = path.relative(realBaseDir, realTargetFile);
+    if (realRelative.startsWith('..') || path.isAbsolute(realRelative)) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+
+    if (!fs.statSync(realTargetFile).isFile()) {
+      return res.status(404).json({ error: 'Image not found' });
+    }
+
+    res.setHeader('Content-Type', 'image/png');
+    res.sendFile(realTargetFile);
   } catch (err) {
     res.status(500).json({ error: 'Internal server error' });
   }

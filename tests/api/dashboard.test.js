@@ -1,7 +1,11 @@
 'use strict';
 const http = require('http');
+const fs = require('fs');
+const path = require('path');
 const { app } = require('../../src/api/server');
 const ResultStore = require('../../src/reporting/ResultStore');
+const CsvExcelInventoryLoader = require('../../src/inventory/CsvExcelInventoryLoader');
+const Website = require('../../src/models/Website');
 
 jest.mock('../../src/reporting/ResultStore', () => ({
   getTodayRuns: jest.fn(),
@@ -187,6 +191,233 @@ describe('Dashboard API Endpoints', () => {
         res.on('end', () => {
           const data = JSON.parse(body);
           expect(data).toEqual([]);
+          done();
+        });
+      });
+    });
+  });
+
+  describe('Visual Image Serving API', () => {
+    const testVisualDir = path.resolve(process.cwd(), './artifacts/visual/baselines/test-site');
+    const testFile = path.join(testVisualDir, 'desktop_123456789abc.png');
+
+    beforeAll(() => {
+      fs.mkdirSync(testVisualDir, { recursive: true });
+      fs.writeFileSync(testFile, Buffer.from('fake-png-data'));
+    });
+
+    afterAll(() => {
+      try {
+        if (fs.existsSync(testFile)) fs.unlinkSync(testFile);
+        if (fs.existsSync(testVisualDir)) fs.rmdirSync(testVisualDir);
+      } catch (e) {}
+    });
+
+    test('GET /api/dashboard/visual rejects invalid visual type with 400', (done) => {
+      http.get(`http://127.0.0.1:${port}/api/dashboard/visual/invalid_type/test-site/desktop_123.png`, (res) => {
+        expect(res.statusCode).toBe(400);
+        let body = '';
+        res.on('data', d => body += d);
+        res.on('end', () => {
+          expect(JSON.parse(body).error).toBe('Invalid visual image type');
+          done();
+        });
+      });
+    });
+
+    test('GET /api/dashboard/visual rejects path traversal in websiteId with 400', (done) => {
+      http.get(`http://127.0.0.1:${port}/api/dashboard/visual/baselines/..%2F..%2Fsecret/desktop_123.png`, (res) => {
+        expect(res.statusCode).toBe(400);
+        let body = '';
+        res.on('data', d => body += d);
+        res.on('end', () => {
+          expect(JSON.parse(body).error).toBe('Invalid website identifier');
+          done();
+        });
+      });
+    });
+
+    test('GET /api/dashboard/visual rejects non-png filename with 400', (done) => {
+      http.get(`http://127.0.0.1:${port}/api/dashboard/visual/baselines/test-site/desktop_123.jpg`, (res) => {
+        expect(res.statusCode).toBe(400);
+        let body = '';
+        res.on('data', d => body += d);
+        res.on('end', () => {
+          expect(JSON.parse(body).error).toBe('Invalid image filename');
+          done();
+        });
+      });
+    });
+
+    test('GET /api/dashboard/visual returns 404 for non-existent image', (done) => {
+      http.get(`http://127.0.0.1:${port}/api/dashboard/visual/baselines/test-site/desktop_nonexistent.png`, (res) => {
+        expect(res.statusCode).toBe(404);
+        let body = '';
+        res.on('data', d => body += d);
+        res.on('end', () => {
+          expect(JSON.parse(body).error).toBe('Image not found');
+          done();
+        });
+      });
+    });
+
+    test('GET /api/dashboard/visual successfully serves existing image', (done) => {
+      http.get(`http://127.0.0.1:${port}/api/dashboard/visual/baselines/test-site/desktop_123456789abc.png`, (res) => {
+        expect(res.statusCode).toBe(200);
+        expect(res.headers['content-type']).toBe('image/png');
+        let body = [];
+        res.on('data', chunk => body.push(chunk));
+        res.on('end', () => {
+          const buffer = Buffer.concat(body);
+          expect(buffer.toString()).toBe('fake-png-data');
+          done();
+        });
+      });
+    });
+  });
+
+  describe('Inventory Website Search API', () => {
+    let loaderSpy;
+    const fixtureWebsites = [
+      new Website({ id: 'site-alpha', name: 'Alpha Portal', url: 'https://alpha.example.com', active: true, domainType: 'smartonline' }),
+      new Website({ id: 'site-beta', name: 'Beta Solutions', url: 'https://beta.example.com', active: true, domainType: 'custom' }),
+      new Website({ id: 'site-gamma', name: 'Gamma Corp', url: 'https://gamma.corp.com', active: false, domainType: 'custom' }),
+      new Website({ id: 'site-delta', name: 'Delta Services', url: 'https://delta.example.com', active: true, domainType: 'smartonline' }),
+      new Website({ id: 'site-epsilon', name: 'Epsilon Tech', url: 'https://epsilon.org', active: true, domainType: 'custom' })
+    ];
+
+    beforeEach(() => {
+      loaderSpy = jest.spyOn(CsvExcelInventoryLoader.prototype, 'loadWebsites').mockResolvedValue(fixtureWebsites);
+    });
+
+    afterEach(() => {
+      if (loaderSpy) loaderSpy.mockRestore();
+    });
+
+    test('GET /api/dashboard/websites returns all websites up to default limit when no query provided', (done) => {
+      http.get(`http://127.0.0.1:${port}/api/dashboard/websites`, (res) => {
+        expect(res.statusCode).toBe(200);
+        let body = '';
+        res.on('data', d => body += d);
+        res.on('end', () => {
+          const data = JSON.parse(body);
+          expect(data.websites).toBeDefined();
+          expect(data.websites.length).toBe(5);
+          expect(data.total).toBe(5);
+          done();
+        });
+      });
+    });
+
+    test('GET /api/dashboard/websites matches case-insensitively by website ID', (done) => {
+      http.get(`http://127.0.0.1:${port}/api/dashboard/websites?q=ALPHA`, (res) => {
+        expect(res.statusCode).toBe(200);
+        let body = '';
+        res.on('data', d => body += d);
+        res.on('end', () => {
+          const data = JSON.parse(body);
+          expect(data.websites.length).toBe(1);
+          expect(data.websites[0].id).toBe('site-alpha');
+          expect(data.websites[0].name).toBe('Alpha Portal');
+          expect(data.total).toBe(1);
+          done();
+        });
+      });
+    });
+
+    test('GET /api/dashboard/websites matches by website name', (done) => {
+      http.get(`http://127.0.0.1:${port}/api/dashboard/websites?q=Solutions`, (res) => {
+        expect(res.statusCode).toBe(200);
+        let body = '';
+        res.on('data', d => body += d);
+        res.on('end', () => {
+          const data = JSON.parse(body);
+          expect(data.websites.length).toBe(1);
+          expect(data.websites[0].id).toBe('site-beta');
+          done();
+        });
+      });
+    });
+
+    test('GET /api/dashboard/websites matches by website URL', (done) => {
+      http.get(`http://127.0.0.1:${port}/api/dashboard/websites?q=corp.com`, (res) => {
+        expect(res.statusCode).toBe(200);
+        let body = '';
+        res.on('data', d => body += d);
+        res.on('end', () => {
+          const data = JSON.parse(body);
+          expect(data.websites.length).toBe(1);
+          expect(data.websites[0].id).toBe('site-gamma');
+          expect(data.websites[0].url).toBe('https://gamma.corp.com');
+          expect(data.websites[0].active).toBe(false);
+          done();
+        });
+      });
+    });
+
+    test('GET /api/dashboard/websites returns empty array when no matches found', (done) => {
+      http.get(`http://127.0.0.1:${port}/api/dashboard/websites?q=nonexistent-query-xyz`, (res) => {
+        expect(res.statusCode).toBe(200);
+        let body = '';
+        res.on('data', d => body += d);
+        res.on('end', () => {
+          const data = JSON.parse(body);
+          expect(data.websites).toEqual([]);
+          expect(data.total).toBe(0);
+          done();
+        });
+      });
+    });
+
+    test('GET /api/dashboard/websites respects custom limit and handles invalid limit safely', (done) => {
+      http.get(`http://127.0.0.1:${port}/api/dashboard/websites?limit=2`, (res) => {
+        expect(res.statusCode).toBe(200);
+        let body = '';
+        res.on('data', d => body += d);
+        res.on('end', () => {
+          const data = JSON.parse(body);
+          expect(data.websites.length).toBe(2);
+          expect(data.total).toBe(5);
+
+          // Check fallback for invalid limit
+          http.get(`http://127.0.0.1:${port}/api/dashboard/websites?limit=invalid`, (res2) => {
+            expect(res2.statusCode).toBe(200);
+            let body2 = '';
+            res2.on('data', d => body2 += d);
+            res2.on('end', () => {
+              const data2 = JSON.parse(body2);
+              expect(data2.websites.length).toBe(5);
+              done();
+            });
+          });
+        });
+      });
+    });
+
+    test('GET /api/dashboard/websites sanitizes output to expose only safe fields', (done) => {
+      http.get(`http://127.0.0.1:${port}/api/dashboard/websites?q=alpha`, (res) => {
+        expect(res.statusCode).toBe(200);
+        let body = '';
+        res.on('data', d => body += d);
+        res.on('end', () => {
+          const data = JSON.parse(body);
+          const site = data.websites[0];
+          expect(Object.keys(site).sort()).toEqual(['active', 'id', 'name', 'url']);
+          expect(site.domainType).toBeUndefined();
+          done();
+        });
+      });
+    });
+
+    test('GET /api/dashboard/websites returns 500 when inventory loader fails', (done) => {
+      loaderSpy.mockRejectedValue(new Error('Disk read failure'));
+      http.get(`http://127.0.0.1:${port}/api/dashboard/websites?q=alpha`, (res) => {
+        expect(res.statusCode).toBe(500);
+        let body = '';
+        res.on('data', d => body += d);
+        res.on('end', () => {
+          const data = JSON.parse(body);
+          expect(data.error).toBe('Failed to load inventory websites');
           done();
         });
       });

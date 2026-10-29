@@ -50,14 +50,51 @@
         </div>
       </section>
 
-      <!-- Ad-Hoc Test Section -->
+      <!-- Website QA Test Section -->
       <section class="card">
-        <h2>Ad-Hoc Website Test</h2>
+        <h2>Run Website QA Test</h2>
         <form id="testForm">
-          <div class="form-group">
-            <label for="urlInput">Website URL</label>
-            <input type="url" id="urlInput" placeholder="https://example.com" required>
+          <!-- Selection Mode Switcher -->
+          <div class="form-group" style="margin-bottom: 1rem;">
+            <label style="font-weight: 600; margin-bottom: 0.5rem; display: block;">Target Mode</label>
+            <div style="display: flex; gap: 1.5rem; align-items: center; flex-wrap: wrap;">
+              <label style="display: flex; align-items: center; gap: 0.35rem; cursor: pointer;">
+                <input type="radio" name="targetMode" value="inventory" checked id="modeInventory">
+                Inventory Batch (Multiple Sites)
+              </label>
+              <label style="display: flex; align-items: center; gap: 0.35rem; cursor: pointer;">
+                <input type="radio" name="targetMode" value="custom" id="modeCustom">
+                Custom URL (Single Site)
+              </label>
+            </div>
           </div>
+
+          <!-- Inventory Batch Mode Controls -->
+          <div id="inventoryModeControls" class="form-group">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem; flex-wrap: wrap; gap: 0.5rem;">
+              <label for="inventorySearchInput" style="margin: 0; font-weight: 500;">Search Inventory Websites</label>
+              <span id="selectionCountBadge" class="badge" style="background: #e2e8f0; color: #334155;">Selected: 0 / 10</span>
+            </div>
+
+            <div style="position: relative; max-width: 500px;">
+              <input type="text" id="inventorySearchInput" placeholder="Type ID, name, or URL to search..." autocomplete="off" style="width: 100%; padding: 0.5rem; border: 1px solid var(--border-color); border-radius: 4px; font-size: 0.95rem;">
+              <div id="searchResultsDropdown" class="hidden" style="position: absolute; top: 100%; left: 0; right: 0; background: var(--card-bg); border: 1px solid var(--border-color); border-radius: 4px; max-height: 220px; overflow-y: auto; z-index: 1000; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);"></div>
+            </div>
+
+            <!-- Selected Websites Container -->
+            <div id="selectedWebsitesContainer" style="margin-top: 1rem;">
+              <div id="selectedWebsitesList" style="display: flex; flex-wrap: wrap; gap: 0.5rem; min-height: 38px; padding: 0.5rem; background: var(--bg-color); border: 1px dashed var(--border-color); border-radius: 4px; align-items: center;">
+                <span id="noWebsitesPlaceholder" style="color: var(--text-muted); font-size: 0.875rem;">No websites selected yet. Search above to add up to 10 websites.</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Custom URL Mode Controls -->
+          <div id="customModeControls" class="form-group hidden">
+            <label for="urlInput">Custom Website URL</label>
+            <input type="url" id="urlInput" placeholder="https://example.com" style="width: 100%; max-width: 500px; padding: 0.5rem; border: 1px solid var(--border-color); border-radius: 4px; font-size: 0.95rem;">
+          </div>
+
           <div class="form-group">
             <label>Validators</label>
             <div class="checkbox-group">
