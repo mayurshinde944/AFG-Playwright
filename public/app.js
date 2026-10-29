@@ -61,24 +61,50 @@ async function loadSummary(date = null) {
 function renderWebsiteTests(websites) {
   const tbody = document.getElementById('websiteTestsBody');
   if (!websites || websites.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="4">No website tests found for this date.</td></tr>';
+    tbody.innerHTML = `
+      <tr>
+        <td colspan="4" class="table-empty-cell">
+          <div class="empty-state-wrap">
+            <div class="empty-state-icon">📋</div>
+            <div class="empty-state-title">No Website Tests Recorded</div>
+            <div class="empty-state-desc">No test runs were recorded for this date. Run a QA test above or select another date from the header.</div>
+          </div>
+        </td>
+      </tr>
+    `;
     return;
   }
 
-  tbody.innerHTML = websites.map(site => `
-    <tr style="cursor: pointer;" onclick="openWebsiteQaResult('${escapeHTML(site.websiteId)}', '${escapeHTML(site.runId)}');">
-      <td><a href="#" style="color: var(--primary-color); font-weight: 500; text-decoration: none;">${escapeHTML(site.websiteId)}</a></td>
-      <td><a href="${escapeHTML(site.url)}" target="_blank" onclick="event.stopPropagation();" style="color: var(--text-muted); text-decoration: none;">${escapeHTML(site.url)}</a></td>
-      <td><span class="badge badge-${escapeHTML(site.overallStatus.toLowerCase())}">${escapeHTML(site.overallStatus)}</span></td>
-      <td>${escapeHTML(site.validators.join(', '))}</td>
-    </tr>
-  `).join('');
+  tbody.innerHTML = websites.map(site => {
+    const valTags = (site.validators || []).map(v => `<span class="val-tag">${escapeHTML(v.toUpperCase())}</span>`).join('');
+    return `
+      <tr class="table-row-clickable" onclick="openWebsiteQaResult('${escapeHTML(site.websiteId)}', '${escapeHTML(site.runId)}');">
+        <td>
+          <a href="#" class="table-website-link" onclick="event.preventDefault();">${escapeHTML(site.websiteId)}</a>
+        </td>
+        <td>
+          <a href="${escapeHTML(site.url)}" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation();" class="table-url-link">${escapeHTML(site.url)} &UpperRightArrow;</a>
+        </td>
+        <td>
+          <span class="badge badge-${escapeHTML(site.overallStatus.toLowerCase())}">${escapeHTML(site.overallStatus)}</span>
+        </td>
+        <td>
+          <div class="table-validators-list">${valTags}</div>
+        </td>
+      </tr>
+    `;
+  }).join('');
 }
 
 async function openWebsiteQaResult(websiteId, runId) {
   const modal = document.getElementById('detailsModal');
   const modalBody = document.getElementById('modalBodyContent');
-  modalBody.innerHTML = '<p>Loading QA Result...</p>';
+  modalBody.innerHTML = `
+    <div class="modal-loading-state">
+      <div class="spinner"></div>
+      <p>Loading QA results for <strong>${escapeHTML(websiteId)}</strong>...</p>
+    </div>
+  `;
   modal.showModal();
 
   try {
@@ -104,30 +130,48 @@ async function openWebsiteQaResult(websiteId, runId) {
     let hasFail = false;
     let hasWarning = false;
     siteResults.forEach(r => {
-      if (r.status === 'FAIL' || r.status === 'ERROR') hasFail = true;
-      else if (r.status === 'WARNING') hasWarning = true;
+      const s = (r.status || '').toUpperCase();
+      if (s === 'FAIL' || s === 'ERROR') hasFail = true;
+      else if (s === 'WARNING') hasWarning = true;
     });
     if (hasFail) overallStatus = 'FAIL';
     else if (hasWarning) overallStatus = 'WARNING';
 
     let html = `
-      <div style="margin-bottom: 2rem;">
-        <p><strong>Website ID:</strong> ${escapeHTML(websiteInfo.websiteId)}</p>
-        <p><strong>URL:</strong> <a href="${escapeHTML(websiteInfo.url)}" target="_blank">${escapeHTML(websiteInfo.url)}</a></p>
-        <p><strong>Overall Status:</strong> <span class="badge badge-${escapeHTML(overallStatus.toLowerCase())}">${escapeHTML(overallStatus)}</span></p>
+      <div class="modal-meta-box">
+        <div class="modal-meta-grid">
+          <div class="modal-meta-item">
+            <span class="modal-meta-label">Website ID</span>
+            <code class="modal-meta-value">${escapeHTML(websiteInfo.websiteId)}</code>
+          </div>
+          <div class="modal-meta-item">
+            <span class="modal-meta-label">Overall Status</span>
+            <div><span class="badge badge-${escapeHTML(overallStatus.toLowerCase())}">${escapeHTML(overallStatus)}</span></div>
+          </div>
+          <div class="modal-meta-item">
+            <span class="modal-meta-label">Run ID</span>
+            <code class="modal-meta-value">${escapeHTML(runId)}</code>
+          </div>
+          <div class="modal-meta-item full-width">
+            <span class="modal-meta-label">Target URL</span>
+            <a href="${escapeHTML(websiteInfo.url)}" target="_blank" rel="noopener noreferrer" class="modal-meta-url">${escapeHTML(websiteInfo.url)} &UpperRightArrow;</a>
+          </div>
+        </div>
       </div>
-      
-      <h3 style="margin-bottom: 1.5rem; padding-bottom: 0.5rem; border-bottom: 2px solid var(--border-color);">Tests Performed</h3>
+
+      <div class="modal-section-header">
+        <h3>Tests Performed (${siteResults.length})</h3>
+      </div>
     `;
 
     siteResults.forEach(res => {
       html += `
-        <div class="validator-card" style="margin-bottom: 1.5rem; border-left: 4px solid ${getStatusColor(res.status)};">
-          <div class="validator-card-header" style="background-color: var(--card-bg); padding: 1rem; border-bottom: 1px solid var(--border-color); display: flex; justify-content: space-between;">
-            <span style="font-weight: 600; font-size: 1.2rem;">${escapeHTML(res.validatorName.toUpperCase())}</span>
+        <div class="validator-card status-${escapeHTML((res.status || 'unknown').toLowerCase())}">
+          <div class="validator-card-header">
+            <span class="validator-card-title">${escapeHTML(res.validatorName.toUpperCase())}</span>
             <span class="badge badge-${escapeHTML(res.status.toLowerCase())}">${escapeHTML(res.status)}</span>
           </div>
-          <div style="padding: 1.5rem;">
+          <div class="validator-card-body">
             ${renderQaReport(res)}
           </div>
         </div>
@@ -136,7 +180,12 @@ async function openWebsiteQaResult(websiteId, runId) {
 
     modalBody.innerHTML = html;
   } catch (err) {
-    modalBody.innerHTML = `<p style="color: var(--danger);"><strong>Error:</strong> ${escapeHTML(err.message)}</p>`;
+    modalBody.innerHTML = `
+      <div class="modal-error-state">
+        <div class="modal-error-title">Unable to Load QA Result</div>
+        <div class="modal-error-message">${escapeHTML(err.message)}</div>
+      </div>
+    `;
   }
 }
 
@@ -148,69 +197,57 @@ function getStatusColor(status) {
 }
 
 function renderQaReport(res) {
-  let html = `<p style="font-size: 1.1rem; margin-bottom: 1.5rem;"><strong>Result:</strong> ${escapeHTML(res.message || res.error || '-')}</p>`;
+  let html = `<div class="report-result-lead"><strong>Result:</strong> ${escapeHTML(res.message || res.error || '-')}</div>`;
   const details = res.details || {};
   const metrics = res.metrics || {};
   const pages = res.pages || details.pageResults || [];
 
   switch (res.validatorName.toLowerCase()) {
     case 'dns':
-      html += `<h4 style="margin-bottom: 0.5rem; color: var(--text-muted); text-transform: uppercase;">DNS Information</h4>`;
+      html += `<h4 class="report-section-title">DNS Information</h4>`;
       let dnsRows = '';
-      if (details.cnames && details.cnames.length > 0) dnsRows += `<tr><th style="text-align: left; padding: 0.5rem;">CNAME</th><td style="padding: 0.5rem;">${escapeHTML(details.cnames.join(', '))}</td></tr>`;
-      if (details.ipAddresses && details.ipAddresses.length > 0) dnsRows += `<tr><th style="text-align: left; padding: 0.5rem;">IP Address</th><td style="padding: 0.5rem;">${escapeHTML(details.ipAddresses.join(', '))}</td></tr>`;
-      if (details.infrastructure) dnsRows += `<tr><th style="text-align: left; padding: 0.5rem;">Infrastructure</th><td style="padding: 0.5rem;">${escapeHTML(details.infrastructure)}</td></tr>`;
-      if (details.relationship) dnsRows += `<tr><th style="text-align: left; padding: 0.5rem;">Relationship</th><td style="padding: 0.5rem;">${escapeHTML(details.relationship)}</td></tr>`;
-      if (dnsRows) html += `<table style="width: 100%; border-collapse: collapse;"><tbody>${dnsRows}</tbody></table>`;
+      if (details.cnames && details.cnames.length > 0) dnsRows += `<tr><th class="info-table-label">CNAME</th><td class="info-table-value">${escapeHTML(details.cnames.join(', '))}</td></tr>`;
+      if (details.ipAddresses && details.ipAddresses.length > 0) dnsRows += `<tr><th class="info-table-label">IP Address</th><td class="info-table-value">${escapeHTML(details.ipAddresses.join(', '))}</td></tr>`;
+      if (details.infrastructure) dnsRows += `<tr><th class="info-table-label">Infrastructure</th><td class="info-table-value">${escapeHTML(details.infrastructure)}</td></tr>`;
+      if (details.relationship) dnsRows += `<tr><th class="info-table-label">Relationship</th><td class="info-table-value">${escapeHTML(details.relationship)}</td></tr>`;
+      if (dnsRows) html += `<div class="table-responsive"><table class="info-table"><tbody>${dnsRows}</tbody></table></div>`;
       break;
 
     case 'ssl':
-      html += `<h4 style="margin-bottom: 0.5rem; color: var(--text-muted); text-transform: uppercase;">Certificate Information</h4>`;
+      html += `<h4 class="report-section-title">Certificate Information</h4>`;
       let sslRows = '';
       const cert = details.certificateNormalized;
       if (cert) {
-        if (cert.subject) sslRows += `<tr><th style="text-align: left; padding: 0.5rem;">Domain/Subject</th><td style="padding: 0.5rem;">${escapeHTML(cert.subject)}</td></tr>`;
-        if (cert.issuer) sslRows += `<tr><th style="text-align: left; padding: 0.5rem;">Issuer</th><td style="padding: 0.5rem;">${escapeHTML(cert.issuer)}</td></tr>`;
-        if (cert.validFrom) sslRows += `<tr><th style="text-align: left; padding: 0.5rem;">Valid From</th><td style="padding: 0.5rem;">${escapeHTML(cert.validFrom)}</td></tr>`;
-        if (cert.validTo) sslRows += `<tr><th style="text-align: left; padding: 0.5rem;">Valid Until</th><td style="padding: 0.5rem;">${escapeHTML(cert.validTo)}</td></tr>`;
-        if (cert.daysRemaining !== undefined) sslRows += `<tr><th style="text-align: left; padding: 0.5rem;">Days Remaining</th><td style="padding: 0.5rem;">${escapeHTML(cert.daysRemaining)}</td></tr>`;
+        if (cert.subject) sslRows += `<tr><th class="info-table-label">Domain / Subject</th><td class="info-table-value">${escapeHTML(cert.subject)}</td></tr>`;
+        if (cert.issuer) sslRows += `<tr><th class="info-table-label">Issuer</th><td class="info-table-value">${escapeHTML(cert.issuer)}</td></tr>`;
+        if (cert.validFrom) sslRows += `<tr><th class="info-table-label">Valid From</th><td class="info-table-value">${escapeHTML(cert.validFrom)}</td></tr>`;
+        if (cert.validTo) sslRows += `<tr><th class="info-table-label">Valid Until</th><td class="info-table-value">${escapeHTML(cert.validTo)}</td></tr>`;
+        if (cert.daysRemaining !== undefined) sslRows += `<tr><th class="info-table-label">Days Remaining</th><td class="info-table-value">${escapeHTML(cert.daysRemaining)}</td></tr>`;
       }
-      if (details.finalUrl) sslRows += `<tr><th style="text-align: left; padding: 0.5rem;">Final URL</th><td style="padding: 0.5rem;">${escapeHTML(details.finalUrl)}</td></tr>`;
-      if (sslRows) html += `<table style="width: 100%; border-collapse: collapse;"><tbody>${sslRows}</tbody></table>`;
+      if (details.finalUrl) sslRows += `<tr><th class="info-table-label">Final URL</th><td class="info-table-value">${escapeHTML(details.finalUrl)}</td></tr>`;
+      if (sslRows) html += `<div class="table-responsive"><table class="info-table"><tbody>${sslRows}</tbody></table></div>`;
       break;
 
     case 'http':
-      html += `<h4 style="margin-bottom: 0.5rem; color: var(--text-muted); text-transform: uppercase;">HTTP Information</h4>`;
+      html += `<h4 class="report-section-title">HTTP Information</h4>`;
       let httpRows = '';
-      if (details.statusCode) httpRows += `<tr><th style="text-align: left; padding: 0.5rem;">Status Code</th><td style="padding: 0.5rem;">${escapeHTML(details.statusCode)}</td></tr>`;
-      if (details.originalUrl) httpRows += `<tr><th style="text-align: left; padding: 0.5rem;">Original URL</th><td style="padding: 0.5rem;">${escapeHTML(details.originalUrl)}</td></tr>`;
-      if (details.finalUrl) httpRows += `<tr><th style="text-align: left; padding: 0.5rem;">Final URL</th><td style="padding: 0.5rem;">${escapeHTML(details.finalUrl)}</td></tr>`;
-      if (httpRows) html += `<table style="width: 100%; border-collapse: collapse;"><tbody>${httpRows}</tbody></table>`;
+      if (details.statusCode) httpRows += `<tr><th class="info-table-label">Status Code</th><td class="info-table-value"><span class="badge ${details.statusCode < 400 ? 'badge-pass' : 'badge-fail'}">${escapeHTML(details.statusCode)}</span></td></tr>`;
+      if (details.originalUrl) httpRows += `<tr><th class="info-table-label">Original URL</th><td class="info-table-value">${escapeHTML(details.originalUrl)}</td></tr>`;
+      if (details.finalUrl) httpRows += `<tr><th class="info-table-label">Final URL</th><td class="info-table-value">${escapeHTML(details.finalUrl)}</td></tr>`;
+      if (httpRows) html += `<div class="table-responsive"><table class="info-table"><tbody>${httpRows}</tbody></table></div>`;
       break;
 
     case 'ui':
-      html += `<h4 style="margin-bottom: 1rem; color: var(--text-muted); text-transform: uppercase;">Pages Tested</h4>`;
-      html += renderPages(pages, 'ui');
-      break;
-
     case 'responsive':
-      html += `<h4 style="margin-bottom: 1rem; color: var(--text-muted); text-transform: uppercase;">Pages Tested</h4>`;
-      html += renderPages(pages, 'responsive');
-      break;
-
     case 'cross-browser':
-      html += `<h4 style="margin-bottom: 1rem; color: var(--text-muted); text-transform: uppercase;">Pages Tested</h4>`;
-      html += renderPages(pages, 'cross-browser');
-      break;
-
     case 'visual':
-      html += `<h4 style="margin-bottom: 1rem; color: var(--text-muted); text-transform: uppercase;">Pages Tested</h4>`;
-      html += renderPages(pages, 'visual');
+      html += `<h4 class="report-section-title">Pages Tested (${pages.length})</h4>`;
+      html += renderPages(pages, res.validatorName.toLowerCase());
       break;
 
     default:
       if (pages.length > 0) {
-        html += `<h4 style="margin-bottom: 1rem; color: var(--text-muted); text-transform: uppercase;">Pages Tested</h4>`;
+        html += `<h4 class="report-section-title">Pages Tested (${pages.length})</h4>`;
         html += renderPages(pages, res.validatorName.toLowerCase());
       }
       break;
@@ -247,6 +284,7 @@ function handleImageError(img) {
   }
 
   const placeholder = document.createElement('div');
+  placeholder.className = 'visual-diff-unavailable';
   placeholder.style.cssText = 'padding: 1.5rem 1rem; text-align: center; color: var(--text-muted); font-size: 0.85rem; background: rgba(0,0,0,0.02); border-radius: 4px; border: 1px dashed var(--border-color);';
   placeholder.textContent = 'Image file is no longer available';
 
@@ -258,14 +296,14 @@ function handleImageError(img) {
 }
 
 function renderPages(pages, type) {
-  if (!pages || pages.length === 0) return '<p>No pages were tested.</p>';
+  if (!pages || pages.length === 0) return '<div class="empty-pages-notice">No pages were tested.</div>';
 
   let html = '';
   pages.forEach(p => {
-    html += `<div style="margin-bottom: 1.5rem; padding: 1rem; background-color: var(--bg-color); border-radius: 6px; border: 1px solid var(--border-color);">`;
-    html += `<div style="display: flex; align-items: center; gap: 1rem; margin-bottom: 0.5rem;">`;
+    html += `<div class="page-card">`;
+    html += `<div class="page-card-header">`;
     html += `<span class="badge badge-${escapeHTML(p.status?.toLowerCase() || 'unknown')}">${escapeHTML(p.status || 'UNKNOWN')}</span>`;
-    html += `<span style="font-weight: 600; word-break: break-all;">${escapeHTML(p.url)}</span>`;
+    html += `<span class="page-card-url">${escapeHTML(p.url)}</span>`;
     html += `</div>`;
 
     let metaInfo = [];
@@ -294,11 +332,11 @@ function renderPages(pages, type) {
     }
 
     if (metaInfo.length > 0) {
-      html += `<div style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 0.5rem;">${metaInfo.join(' | ')}</div>`;
+      html += `<div class="page-card-meta">${metaInfo.join(' <span class="meta-separator">&bull;</span> ')}</div>`;
     }
 
     if (p.issues && p.issues.length > 0) {
-      html += `<div style="margin-top: 0.5rem;"><strong>Issues:</strong><ul style="margin-top: 0.25rem; margin-bottom: 0; padding-left: 1.5rem; font-size: 0.9rem;">`;
+      html += `<div class="page-card-issues"><strong class="page-card-issues-title">Issues:</strong><ul>`;
       p.issues.forEach(issue => {
         let issueContext = '';
         if (issue.context?.affectedBrowsers && type === 'cross-browser') {
@@ -315,44 +353,44 @@ function renderPages(pages, type) {
       const baselineUrl = !isMissingBaseline ? toVisualImageUrl(p.metrics.baselinePath) : null;
       const diffUrl = toVisualImageUrl(p.metrics.diffPath);
 
-      html += `<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 1rem; margin-top: 1rem;">`;
+      html += `<div class="visual-diff-grid">`;
 
       if (baselineUrl) {
         html += `
-          <div style="border: 1px solid var(--border-color); border-radius: 6px; padding: 0.75rem; background: var(--card-bg);">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
-              <strong style="font-size: 0.85rem; color: var(--text-muted); text-transform: uppercase;">Baseline Screenshot</strong>
-              <a href="${baselineUrl}" target="_blank" style="font-size: 0.75rem; color: var(--primary-color); text-decoration: none;">View Full Size &UpperRightArrow;</a>
+          <div class="visual-diff-card">
+            <div class="visual-diff-header">
+              <strong class="visual-diff-label">Baseline Screenshot</strong>
+              <a href="${baselineUrl}" target="_blank" class="visual-diff-link">View Full Size &UpperRightArrow;</a>
             </div>
-            <a href="${baselineUrl}" target="_blank"><img src="${baselineUrl}" alt="Baseline Screenshot" style="width: 100%; max-height: 280px; object-fit: contain; background: #f8fafc; border: 1px solid var(--border-color); border-radius: 4px; display: block;" /></a>
+            <a href="${baselineUrl}" target="_blank" class="visual-diff-img-wrap"><img src="${baselineUrl}" alt="Baseline Screenshot" class="visual-diff-img" /></a>
           </div>`;
       } else {
         html += `
-          <div style="border: 1px dashed var(--border-color); border-radius: 6px; padding: 1.5rem 1rem; text-align: center; color: var(--text-muted); display: flex; flex-direction: column; justify-content: center; align-items: center; background: rgba(0,0,0,0.02);">
-            <strong style="font-size: 0.85rem; text-transform: uppercase; color: var(--text-muted); margin-bottom: 0.5rem;">Baseline Screenshot</strong>
-            <p style="font-size: 0.85rem; margin: 0; line-height: 1.4;">Baseline not established — actual screenshot saved for manual promotion</p>
+          <div class="visual-diff-card visual-diff-empty">
+            <strong class="visual-diff-label">Baseline Screenshot</strong>
+            <p>Baseline not established — actual screenshot saved for manual promotion</p>
           </div>`;
       }
 
       if (actualUrl) {
         html += `
-          <div style="border: 1px solid var(--border-color); border-radius: 6px; padding: 0.75rem; background: var(--card-bg);">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
-              <strong style="font-size: 0.85rem; color: var(--text-muted); text-transform: uppercase;">Actual Screenshot</strong>
-              <a href="${actualUrl}" target="_blank" style="font-size: 0.75rem; color: var(--primary-color); text-decoration: none;">View Full Size &UpperRightArrow;</a>
+          <div class="visual-diff-card">
+            <div class="visual-diff-header">
+              <strong class="visual-diff-label">Actual Screenshot</strong>
+              <a href="${actualUrl}" target="_blank" class="visual-diff-link">View Full Size &UpperRightArrow;</a>
             </div>
-            <a href="${actualUrl}" target="_blank"><img src="${actualUrl}" alt="Actual Screenshot" onerror="handleImageError(this)" style="width: 100%; max-height: 280px; object-fit: contain; background: #f8fafc; border: 1px solid var(--border-color); border-radius: 4px; display: block;" /></a>
+            <a href="${actualUrl}" target="_blank" class="visual-diff-img-wrap"><img src="${actualUrl}" alt="Actual Screenshot" onerror="handleImageError(this)" class="visual-diff-img" /></a>
           </div>`;
       }
 
       if (diffUrl) {
         html += `
-          <div style="border: 1px solid var(--danger); border-radius: 6px; padding: 0.75rem; background: var(--card-bg);">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
-              <strong style="font-size: 0.85rem; color: var(--danger); text-transform: uppercase;">Visual Diff (${escapeHTML(p.metrics.mismatchPercentage)}%)</strong>
-              <a href="${diffUrl}" target="_blank" style="font-size: 0.75rem; color: var(--danger); text-decoration: none;">View Full Size &UpperRightArrow;</a>
+          <div class="visual-diff-card visual-diff-mismatch">
+            <div class="visual-diff-header">
+              <strong class="visual-diff-label text-danger">Visual Diff (${escapeHTML(p.metrics.mismatchPercentage)}%)</strong>
+              <a href="${diffUrl}" target="_blank" class="visual-diff-link text-danger">View Full Size &UpperRightArrow;</a>
             </div>
-            <a href="${diffUrl}" target="_blank"><img src="${diffUrl}" alt="Visual Diff" onerror="handleImageError(this)" style="width: 100%; max-height: 280px; object-fit: contain; background: #f8fafc; border: 1px solid var(--border-color); border-radius: 4px; display: block;" /></a>
+            <a href="${diffUrl}" target="_blank" class="visual-diff-img-wrap"><img src="${diffUrl}" alt="Visual Diff" onerror="handleImageError(this)" class="visual-diff-img" /></a>
           </div>`;
       }
 
@@ -402,8 +440,8 @@ function setupAdHocForm() {
     batchCountBadge.textContent = `URLs: ${count} / ${MAX_BATCH_SIZE}`;
 
     if (count === 0) {
-      batchCountBadge.className = 'badge';
-      batchCountBadge.style.cssText = 'background: #e2e8f0; color: #334155;';
+      batchCountBadge.className = 'badge badge-queued';
+      batchCountBadge.style.cssText = '';
     } else if (count > MAX_BATCH_SIZE) {
       batchCountBadge.className = 'badge badge-danger';
       batchCountBadge.style.cssText = '';
@@ -616,7 +654,7 @@ function setupAdHocForm() {
       const displayName = w.name && w.name !== w.websiteId ? w.name : w.websiteId;
       const subId = w.name && w.name !== w.websiteId ? `(${escapeHTML(w.websiteId)})` : '';
       html += `
-        <div class="batch-website-card">
+        <div class="batch-website-card provisional">
           <div class="batch-card-header">
             <div class="batch-card-title">
               <strong>${escapeHTML(displayName)}</strong>
@@ -629,7 +667,7 @@ function setupAdHocForm() {
           </div>
           <div class="batch-card-summary">
             <span style="font-size: 0.85rem; color: var(--text-muted);">${isPending ? 'Queued in execution queue...' : 'Validation tests running...'}</span>
-            <button type="button" disabled style="opacity: 0.6; cursor: not-allowed; font-size: 0.8rem; padding: 0.25rem 0.75rem;">Pending Results</button>
+            <button type="button" class="btn btn-secondary btn-sm" disabled style="opacity: 0.6; cursor: not-allowed;">Pending Results</button>
           </div>
         </div>
       `;
@@ -656,7 +694,7 @@ function setupAdHocForm() {
       const displayName = w.name && w.name !== w.websiteId ? w.name : w.websiteId;
       const subId = w.name && w.name !== w.websiteId ? `(${escapeHTML(w.websiteId)})` : '';
       html += `
-        <div class="batch-website-card">
+        <div class="batch-website-card status-fail">
           <div class="batch-card-header">
             <div class="batch-card-title">
               <strong>${escapeHTML(displayName)}</strong>
@@ -705,10 +743,10 @@ function setupAdHocForm() {
         const errCount = siteResults.filter(r => r.status === 'ERROR').length;
 
         let countsHtml = `<span class="batch-count-item">Validators: <strong>${totalCount}</strong></span>`;
-        if (passCount > 0) countsHtml += `<span class="batch-count-item text-success">Pass: <strong>${passCount}</strong></span>`;
-        if (warnCount > 0) countsHtml += `<span class="batch-count-item text-warning">Warn: <strong>${warnCount}</strong></span>`;
-        if (failCount > 0) countsHtml += `<span class="batch-count-item text-danger">Fail: <strong>${failCount}</strong></span>`;
-        if (errCount > 0) countsHtml += `<span class="batch-count-item text-danger">Err: <strong>${errCount}</strong></span>`;
+        if (passCount > 0) countsHtml += `<span class="batch-count-item text-success count-pass">Pass: <strong>${passCount}</strong></span>`;
+        if (warnCount > 0) countsHtml += `<span class="batch-count-item text-warning count-warn">Warn: <strong>${warnCount}</strong></span>`;
+        if (failCount > 0) countsHtml += `<span class="batch-count-item text-danger count-fail">Fail: <strong>${failCount}</strong></span>`;
+        if (errCount > 0) countsHtml += `<span class="batch-count-item text-danger count-err">Err: <strong>${errCount}</strong></span>`;
 
         let validatorTagsHtml = '';
         if (siteResults.length > 0) {
@@ -719,7 +757,7 @@ function setupAdHocForm() {
         }
 
         html += `
-          <div class="batch-website-card">
+          <div class="batch-website-card status-${escapeHTML(siteStatus.toLowerCase())}">
             <div class="batch-card-header">
               <div class="batch-card-title">
                 <strong>${escapeHTML(displayName)}</strong>
@@ -737,7 +775,7 @@ function setupAdHocForm() {
               ${validatorTagsHtml}
             </div>
             <div class="batch-card-action">
-              <button type="button" style="padding: 0.35rem 0.85rem; font-size: 0.85rem;" onclick="openWebsiteQaResult('${escapeHTML(w.websiteId)}', '${escapeHTML(runId)}')">View Detailed Results</button>
+              <button type="button" class="btn btn-secondary btn-sm" onclick="openWebsiteQaResult('${escapeHTML(w.websiteId)}', '${escapeHTML(runId)}')">View Detailed Results</button>
             </div>
           </div>
         `;
@@ -818,7 +856,12 @@ async function openWebsiteHistory(identifier) {
   const body = document.getElementById('historyModalBody');
 
   modal.showModal();
-  body.innerHTML = '<p>Loading history...</p>';
+  body.innerHTML = `
+    <div class="modal-loading-state">
+      <div class="spinner"></div>
+      <p>Loading history for <strong>${escapeHTML(identifier)}</strong>...</p>
+    </div>
+  `;
 
   try {
     const res = await fetch(`/api/dashboard/website/${encodeURIComponent(identifier)}/history`);
@@ -828,52 +871,98 @@ async function openWebsiteHistory(identifier) {
     const history = await res.json();
 
     if (history.length === 0) {
-      body.innerHTML = `<p>No history found for <strong>${escapeHTML(identifier)}</strong>.</p>`;
+      body.innerHTML = `
+        <div class="modal-empty-state">
+          <div class="empty-state-icon">🔍</div>
+          <div class="empty-state-title">No History Records Found</div>
+          <div class="empty-state-desc">No past execution records were found matching <strong>${escapeHTML(identifier)}</strong>.</div>
+        </div>
+      `;
       return;
     }
 
     const site = history[0];
 
     let html = `
-      <div style="margin-bottom: 1rem;">
-        <strong>Website ID:</strong> ${escapeHTML(site.websiteId)}<br>
-        <strong>URL:</strong> <a href="${escapeHTML(site.url)}" target="_blank">${escapeHTML(site.url)}</a>
+      <div class="history-meta-card">
+        <div class="history-meta-grid">
+          <div class="history-meta-col history-meta-id">
+            <span class="history-meta-label">Website ID</span>
+            <code class="history-meta-value" title="${escapeHTML(site.websiteId)}">${escapeHTML(site.websiteId)}</code>
+          </div>
+          <div class="history-meta-col history-meta-url">
+            <span class="history-meta-label">Target URL</span>
+            <a href="${escapeHTML(site.url)}" target="_blank" rel="noopener noreferrer" class="history-meta-link" title="${escapeHTML(site.url)}">
+              <span class="history-meta-url-text">${escapeHTML(site.url)}</span>
+              <span class="history-meta-ext">&UpperRightArrow;</span>
+            </a>
+          </div>
+          <div class="history-meta-col history-meta-count">
+            <span class="history-meta-label">Total Executions</span>
+            <span class="history-meta-badge">${history.length} ${history.length === 1 ? 'Run' : 'Runs'}</span>
+          </div>
+        </div>
       </div>
-      <table class="table">
-        <thead>
-          <tr>
-            <th>Date</th>
-            <th>Run ID</th>
-            <th>Validators</th>
-            <th>Status</th>
-            <th>Action</th>
-          </tr>
-        </thead>
-        <tbody>
+      <div class="table-responsive history-table-responsive">
+        <table class="table history-table">
+          <thead>
+            <tr>
+              <th class="col-date">Date</th>
+              <th class="col-run-id">Run ID</th>
+              <th class="col-validators">Validators</th>
+              <th class="col-status">Status</th>
+              <th class="col-action">Action</th>
+            </tr>
+          </thead>
+          <tbody>
     `;
 
     for (const run of history) {
-      const valStrings = run.validators.map(v => `${escapeHTML(v.validatorName)}: <span class="badge badge-${escapeHTML(v.status.toLowerCase())}" style="font-size: 0.7em; padding: 0.1em 0.3em;">${escapeHTML(v.status)}</span>`).join('<br>');
+      const valBadges = run.validators.map(v => {
+        const valName = (v.validatorName || '').toUpperCase();
+        const valStatus = (v.status || '').toUpperCase();
+        const statusClass = (v.status || 'unknown').toLowerCase();
+        return `
+          <span class="history-val-badge badge-${escapeHTML(statusClass)}" title="${escapeHTML(valName)}: ${escapeHTML(valStatus)}">
+            <span class="val-badge-name">${escapeHTML(valName)}</span>
+            <span class="val-badge-status">${escapeHTML(valStatus)}</span>
+          </span>
+        `;
+      }).join('');
 
       html += `
         <tr>
-          <td>${escapeHTML(run.date)}</td>
-          <td>${escapeHTML(run.runId)}</td>
-          <td>${valStrings}</td>
-          <td><span class="badge badge-${escapeHTML(run.overallStatus.toLowerCase())}">${escapeHTML(run.overallStatus)}</span></td>
-          <td><button onclick="openWebsiteQaResult('${escapeHTML(site.websiteId)}', '${escapeHTML(run.runId)}')">View Details</button></td>
+          <td class="col-date"><span class="history-date">${escapeHTML(run.date)}</span></td>
+          <td class="col-run-id">
+            <code class="history-run-id" title="${escapeHTML(run.runId)}">${escapeHTML(run.runId)}</code>
+          </td>
+          <td class="col-validators">
+            <div class="history-val-list">${valBadges}</div>
+          </td>
+          <td class="col-status">
+            <span class="badge badge-${escapeHTML(run.overallStatus.toLowerCase())}">${escapeHTML(run.overallStatus)}</span>
+          </td>
+          <td class="col-action">
+            <button type="button" class="btn btn-secondary btn-sm history-action-btn" onclick="openWebsiteQaResult('${escapeHTML(site.websiteId)}', '${escapeHTML(run.runId)}')">View Details</button>
+          </td>
         </tr>
       `;
     }
 
     html += `
-        </tbody>
-      </table>
+          </tbody>
+        </table>
+      </div>
     `;
 
     body.innerHTML = html;
   } catch (err) {
     console.error(err);
-    body.innerHTML = `<p style="color: red;">Error: ${escapeHTML(err.message)}</p>`;
+    body.innerHTML = `
+      <div class="modal-error-state">
+        <div class="modal-error-title">Failed to load history</div>
+        <div class="modal-error-message">${escapeHTML(err.message)}</div>
+      </div>
+    `;
   }
 }

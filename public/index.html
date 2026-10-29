@@ -2,88 +2,105 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>AFG Automation Dashboard</title>
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
   <div class="container">
-    <header style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem;">
-      <h1>AFG Automation Dashboard</h1>
-      <div style="display: flex; gap: 1rem; align-items: center; flex-wrap: wrap;">
-        <div style="display: flex; gap: 0.5rem; align-items: center;">
-          <input type="text" id="websiteHistorySearch" placeholder="Search Website ID or URL" style="padding: 0.25rem; border: 1px solid var(--border-color); border-radius: 4px; font-size: 0.875rem; width: 200px;">
-          <button id="websiteHistoryBtn" style="padding: 0.25rem 0.75rem; font-size: 0.875rem;">History</button>
+    <header class="dashboard-header">
+      <div class="header-brand">
+        <div class="header-title-row">
+          <h1>AFG Automation Dashboard</h1>
+          <span class="header-tag">Enterprise QA</span>
         </div>
-        <div style="display: flex; gap: 0.5rem; align-items: center; padding-left: 1rem; border-left: 1px solid var(--border-color);">
-          <label for="historyDateInput" style="font-size: 0.875rem; color: var(--text-muted);">Execution Date:</label>
-          <input type="date" id="historyDateInput" style="padding: 0.25rem; border: 1px solid var(--border-color); border-radius: 4px;">
-          <button id="loadDateBtn" style="padding: 0.25rem 0.75rem; font-size: 0.875rem;">Load Date</button>
+        <p class="header-subtitle">Website QA Automation Platform</p>
+      </div>
+      <div class="header-controls">
+        <div class="header-control-group">
+          <input type="text" id="websiteHistorySearch" class="form-input header-search-input" placeholder="Search Website ID or URL">
+          <button id="websiteHistoryBtn" class="btn btn-secondary">History</button>
+        </div>
+        <div class="header-divider" aria-hidden="true"></div>
+        <div class="header-control-group">
+          <label for="historyDateInput" class="header-date-label">Execution Date:</label>
+          <input type="date" id="historyDateInput" class="form-input header-date-input">
+          <button id="loadDateBtn" class="btn btn-secondary">Load Date</button>
         </div>
       </div>
     </header>
 
     <main>
       <!-- Summary Section -->
-      <section class="card">
+      <section class="card summary-card">
         <h2 id="summaryHeading">Today's Summary</h2>
         <div class="summary-grid" id="summaryGrid">
           <div class="stat-box">
-            <span class="stat-value" id="statTotalTested">-</span>
             <span class="stat-label">Total Tested</span>
+            <span class="stat-value" id="statTotalTested">-</span>
           </div>
           <div class="stat-box success">
-            <span class="stat-value" id="statPassed">-</span>
             <span class="stat-label">Passed</span>
+            <span class="stat-value" id="statPassed">-</span>
           </div>
           <div class="stat-box danger">
-            <span class="stat-value" id="statFailed">-</span>
             <span class="stat-label">Failed</span>
+            <span class="stat-value" id="statFailed">-</span>
           </div>
           <div class="stat-box warning">
-            <span class="stat-value" id="statWarnings">-</span>
             <span class="stat-label">Warnings</span>
+            <span class="stat-value" id="statWarnings">-</span>
           </div>
           <div class="stat-box gray">
-            <span class="stat-value" id="statNotTested">-</span>
             <span class="stat-label">Not Tested</span>
+            <span class="stat-value" id="statNotTested">-</span>
           </div>
         </div>
       </section>
 
       <!-- Website QA Test Section -->
-      <section class="card">
+      <section class="card qa-test-card">
         <h2>Run Website QA Test</h2>
-        <form id="testForm">
+        <form id="testForm" class="qa-form">
           <div class="form-group">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem; max-width: 600px; flex-wrap: wrap; gap: 0.5rem;">
-              <label for="batchUrlsInput" style="margin: 0; font-weight: 500;">Website URLs (one per line, up to 10)</label>
-              <span id="batchCountBadge" class="badge" style="background: #e2e8f0; color: #334155;">URLs: 0 / 10</span>
+            <div class="form-label-row">
+              <label for="batchUrlsInput" class="form-label">Website URLs <span class="form-label-subtext">(1 to 10 sites, one per line)</span></label>
+              <span id="batchCountBadge" class="badge badge-queued">URLs: 0 / 10</span>
             </div>
-            <textarea id="batchUrlsInput" class="batch-urls-textarea" rows="6" placeholder="example.com&#10;https://httpbin.org&#10;mysite.com/portal"></textarea>
-            <div class="batch-urls-hint">Enter 1 to 10 website URLs, one URL per line (e.g. example.com or https://example.com). Blank lines and surrounding whitespace are ignored.</div>
+            <textarea id="batchUrlsInput" class="batch-urls-textarea" rows="6" placeholder="example.com&#10;https://httpbin.org&#10;mysite.com/portal" spellcheck="false" autocomplete="off"></textarea>
+            <div class="batch-urls-hint">Enter 1 to 10 website URLs or domains (e.g. <code>example.com</code> or <code>https://example.com</code>). Blank lines are ignored. Missing protocols default to HTTPS.</div>
           </div>
 
           <div class="form-group">
-            <label>Validators</label>
+            <label class="form-label">Validators <span class="form-label-subtext">(Select checks to execute)</span></label>
             <div class="checkbox-group">
-              <label><input type="checkbox" name="validator" value="dns"> DNS</label>
-              <label><input type="checkbox" name="validator" value="ssl"> SSL</label>
-              <label><input type="checkbox" name="validator" value="http"> HTTP</label>
-              <label><input type="checkbox" name="validator" value="ui"> UI</label>
-              <label><input type="checkbox" name="validator" value="responsive"> Responsive</label>
-              <label><input type="checkbox" name="validator" value="cross-browser"> Cross-Browser</label>
-              <label><input type="checkbox" name="validator" value="visual"> Visual</label>
+              <label class="validator-chip"><input type="checkbox" name="validator" value="dns"> DNS</label>
+              <label class="validator-chip"><input type="checkbox" name="validator" value="ssl"> SSL</label>
+              <label class="validator-chip"><input type="checkbox" name="validator" value="http"> HTTP</label>
+              <label class="validator-chip"><input type="checkbox" name="validator" value="ui"> UI</label>
+              <label class="validator-chip"><input type="checkbox" name="validator" value="responsive"> Responsive</label>
+              <label class="validator-chip"><input type="checkbox" name="validator" value="cross-browser"> Cross-Browser</label>
+              <label class="validator-chip"><input type="checkbox" name="validator" value="visual"> Visual</label>
             </div>
           </div>
-          <button type="submit" id="submitBtn">Run Test</button>
+          <button type="submit" id="submitBtn" class="btn btn-primary btn-lg">Run QA Tests</button>
         </form>
 
-        <div id="statusContainer" class="hidden">
-          <h3>Execution Status</h3>
-          <p>Run ID: <span id="currentRunId">-</span></p>
-          <p>Status: <span id="currentStatus" class="badge badge-queued">QUEUED</span></p>
+        <div id="statusContainer" class="execution-status-panel hidden">
+          <div class="status-panel-header">
+            <div class="status-panel-title-group">
+              <span class="status-panel-eyebrow">Execution Progress</span>
+              <div class="status-panel-run-info">
+                <span class="run-label">Run ID:</span>
+                <code id="currentRunId" class="run-id-value">-</code>
+              </div>
+            </div>
+            <div class="status-panel-badge-group">
+              <span id="currentStatus" class="badge badge-queued">QUEUED</span>
+            </div>
+          </div>
           <div id="executionResult" class="hidden">
-            <div id="executionAction" style="margin-top: 1rem;"></div>
+            <div id="executionAction"></div>
           </div>
         </div>
       </section>
@@ -91,19 +108,21 @@
       <!-- Website Tests List Section -->
       <section class="card">
         <h2 id="websiteTestsHeading">Today's Website Tests</h2>
-        <table class="table">
-          <thead>
-            <tr>
-              <th>Website</th>
-              <th>URL</th>
-              <th>Status</th>
-              <th>Tests</th>
-            </tr>
-          </thead>
-          <tbody id="websiteTestsBody">
-            <tr><td colspan="4">Loading...</td></tr>
-          </tbody>
-        </table>
+        <div class="table-responsive">
+          <table class="table">
+            <thead>
+              <tr>
+                <th style="width: 25%;">Website</th>
+                <th style="width: 35%;">URL</th>
+                <th style="width: 15%;">Status</th>
+                <th style="width: 25%;">Tests</th>
+              </tr>
+            </thead>
+            <tbody id="websiteTestsBody">
+              <tr><td colspan="4" class="table-empty-cell">Loading...</td></tr>
+            </tbody>
+          </table>
+        </div>
       </section>
 
     </main>
@@ -113,8 +132,11 @@
   <dialog id="detailsModal" class="modal">
     <div class="modal-content">
       <div class="modal-header">
-        <h2>Website QA Result</h2>
-        <button id="closeModalBtn" class="close-btn" onclick="closeRunDetails()">&times;</button>
+        <div class="modal-title-group">
+          <h2>Website QA Result</h2>
+          <span class="modal-subtitle">Detailed validation report</span>
+        </div>
+        <button id="closeModalBtn" class="close-btn" onclick="closeRunDetails()" aria-label="Close modal">&times;</button>
       </div>
       <div class="modal-body" id="modalBodyContent">
         <!-- Content dynamically injected here -->
@@ -126,8 +148,11 @@
   <dialog id="websiteHistoryModal" class="modal">
     <div class="modal-content">
       <div class="modal-header">
-        <h2>Website History</h2>
-        <button class="close-btn" onclick="document.getElementById('websiteHistoryModal').close()">&times;</button>
+        <div class="modal-title-group">
+          <h2>Website History</h2>
+          <span class="modal-subtitle">Past execution records</span>
+        </div>
+        <button class="close-btn" onclick="document.getElementById('websiteHistoryModal').close()" aria-label="Close modal">&times;</button>
       </div>
       <div class="modal-body" id="historyModalBody">
         <!-- Content dynamically injected here -->
