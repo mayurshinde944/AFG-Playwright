@@ -378,198 +378,91 @@ function setupAdHocForm() {
   const executionAction = document.getElementById('executionAction');
 
   // Mode radio buttons and containers
-  const modeInventory = document.getElementById('modeInventory');
-  const modeCustom = document.getElementById('modeCustom');
-  const inventoryModeControls = document.getElementById('inventoryModeControls');
-  const customModeControls = document.getElementById('customModeControls');
+  const modeBatch = document.getElementById('modeBatch');
+  const modeSingle = document.getElementById('modeSingle');
+  const batchModeControls = document.getElementById('batchModeControls');
+  const singleModeControls = document.getElementById('singleModeControls');
 
-  // Inventory search and selection elements
-  const searchInput = document.getElementById('inventorySearchInput');
-  const searchDropdown = document.getElementById('searchResultsDropdown');
-  const selectionBadge = document.getElementById('selectionCountBadge');
-  const selectedListContainer = document.getElementById('selectedWebsitesList');
+  // Input elements and badge
+  const batchUrlsInput = document.getElementById('batchUrlsInput');
+  const batchCountBadge = document.getElementById('batchCountBadge');
+  const urlInput = document.getElementById('urlInput');
 
   const MAX_BATCH_SIZE = 10;
-  let selectedWebsites = [];
-  let searchTimeout = null;
   let pollInterval = null;
   let activeBatch = null;
 
   // Toggle modes
   function updateMode() {
-    if (modeInventory && modeInventory.checked) {
-      if (inventoryModeControls) inventoryModeControls.classList.remove('hidden');
-      if (customModeControls) customModeControls.classList.add('hidden');
+    const isBatch = modeBatch ? modeBatch.checked : true;
+    if (batchModeControls) {
+      if (isBatch) batchModeControls.classList.remove('hidden');
+      else batchModeControls.classList.add('hidden');
+    }
+    if (singleModeControls) {
+      if (isBatch) singleModeControls.classList.add('hidden');
+      else singleModeControls.classList.remove('hidden');
+    }
+  }
+
+  if (modeBatch) modeBatch.addEventListener('change', updateMode);
+  if (modeSingle) modeSingle.addEventListener('change', updateMode);
+
+  // Extract non-blank trimmed lines from textarea
+  function getBatchUrls() {
+    if (!batchUrlsInput) return [];
+    return batchUrlsInput.value
+      .split('\n')
+      .map(line => line.trim())
+      .filter(line => line.length > 0);
+  }
+
+  // Update live count badge
+  function updateBatchCount() {
+    if (!batchCountBadge) return;
+    const urls = getBatchUrls();
+    const count = urls.length;
+    batchCountBadge.textContent = `URLs: ${count} / ${MAX_BATCH_SIZE}`;
+
+    if (count === 0) {
+      batchCountBadge.className = 'badge';
+      batchCountBadge.style.cssText = 'background: #e2e8f0; color: #334155;';
+    } else if (count > MAX_BATCH_SIZE) {
+      batchCountBadge.className = 'badge badge-danger';
+      batchCountBadge.style.cssText = '';
     } else {
-      if (inventoryModeControls) inventoryModeControls.classList.add('hidden');
-      if (customModeControls) customModeControls.classList.remove('hidden');
+      batchCountBadge.className = 'badge badge-running';
+      batchCountBadge.style.cssText = '';
     }
   }
 
-  if (modeInventory) modeInventory.addEventListener('change', updateMode);
-  if (modeCustom) modeCustom.addEventListener('change', updateMode);
-
-  // Render selected websites chips
-  function renderSelectedWebsites() {
-    if (!selectedListContainer) return;
-
-    if (selectionBadge) {
-      selectionBadge.textContent = `Selected: ${selectedWebsites.length} / ${MAX_BATCH_SIZE}`;
-      if (selectedWebsites.length >= MAX_BATCH_SIZE) {
-        selectionBadge.className = 'badge badge-warning';
-      } else {
-        selectionBadge.className = 'badge';
-        selectionBadge.style.cssText = 'background: #e2e8f0; color: #334155;';
-      }
-    }
-
-    selectedListContainer.innerHTML = '';
-
-    if (selectedWebsites.length === 0) {
-      const placeholder = document.createElement('span');
-      placeholder.id = 'noWebsitesPlaceholder';
-      placeholder.style.cssText = 'color: var(--text-muted); font-size: 0.875rem;';
-      placeholder.textContent = 'No websites selected yet. Search above to add up to 10 websites.';
-      selectedListContainer.appendChild(placeholder);
-      return;
-    }
-
-    selectedWebsites.forEach(site => {
-      const chip = document.createElement('div');
-      chip.className = 'website-chip';
-
-      const idSpan = document.createElement('span');
-      idSpan.className = 'chip-id';
-      idSpan.textContent = site.id;
-
-      const descSpan = document.createElement('span');
-      descSpan.textContent = site.name && site.name !== site.id ? `(${site.name})` : '';
-
-      const removeBtn = document.createElement('button');
-      removeBtn.type = 'button';
-      removeBtn.className = 'chip-remove';
-      removeBtn.setAttribute('aria-label', `Remove ${site.id}`);
-      removeBtn.innerHTML = '&times;';
-      removeBtn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        removeWebsite(site.id);
-      });
-
-      chip.appendChild(idSpan);
-      if (descSpan.textContent) chip.appendChild(descSpan);
-      chip.appendChild(removeBtn);
-      selectedListContainer.appendChild(chip);
+  if (batchUrlsInput) {
+    batchUrlsInput.addEventListener('input', updateBatchCount);
+    batchUrlsInput.addEventListener('paste', () => {
+      setTimeout(updateBatchCount, 50);
     });
   }
 
-  function addWebsite(site) {
-    if (selectedWebsites.length >= MAX_BATCH_SIZE) {
-      alert(`Maximum limit of ${MAX_BATCH_SIZE} websites reached.`);
-      return;
+  // Initial count render
+  updateBatchCount();
+
+  // Client-side URL normalization for duplicate checking (mirrors backend ScopeResolver rules)
+  function clientNormalizeUrl(raw) {
+    const parsed = new URL(raw);
+    let port = parsed.port;
+    if ((parsed.protocol === 'http:' && port === '80') || (parsed.protocol === 'https:' && port === '443')) {
+      port = '';
     }
-    if (selectedWebsites.some(s => s.id === site.id)) {
-      alert(`Website "${site.id}" is already selected.`);
-      return;
+    let pathname = parsed.pathname;
+    if (pathname.length > 1 && pathname.endsWith('/')) {
+      pathname = pathname.replace(/\/+$/, '');
+      if (pathname === '') {
+        pathname = '/';
+      }
     }
-    selectedWebsites.push(site);
-    renderSelectedWebsites();
-    if (searchInput) searchInput.value = '';
-    if (searchDropdown) searchDropdown.classList.add('hidden');
+    const host = parsed.hostname.toLowerCase() + (port ? `:${port}` : '');
+    return `${parsed.protocol}//${host}${pathname}${parsed.search}`;
   }
-
-  function removeWebsite(siteId) {
-    selectedWebsites = selectedWebsites.filter(s => s.id !== siteId);
-    renderSelectedWebsites();
-  }
-
-  // Inventory Search Autocomplete
-  if (searchInput && searchDropdown) {
-    searchInput.addEventListener('input', () => {
-      if (searchTimeout) clearTimeout(searchTimeout);
-      const query = searchInput.value.trim();
-
-      if (!query) {
-        searchDropdown.classList.add('hidden');
-        searchDropdown.innerHTML = '';
-        return;
-      }
-
-      searchTimeout = setTimeout(async () => {
-        try {
-          const res = await fetch(`/api/dashboard/websites?q=${encodeURIComponent(query)}&limit=10`);
-          if (!res.ok) throw new Error('Search failed');
-          const data = await res.json();
-          const websites = data.websites || [];
-
-          searchDropdown.innerHTML = '';
-
-          if (websites.length === 0) {
-            const noResults = document.createElement('div');
-            noResults.className = 'search-result-item';
-            noResults.style.cssText = 'color: var(--text-muted); cursor: default;';
-            noResults.textContent = 'No matching inventory websites found';
-            searchDropdown.appendChild(noResults);
-          } else {
-            websites.forEach(site => {
-              const item = document.createElement('div');
-              item.className = 'search-result-item';
-
-              const isAlreadySelected = selectedWebsites.some(s => s.id === site.id);
-              const isAtLimit = selectedWebsites.length >= MAX_BATCH_SIZE;
-
-              const title = document.createElement('div');
-              title.style.cssText = 'font-weight: 500; display: flex; justify-content: space-between; align-items: center;';
-              title.textContent = site.name || site.id;
-
-              if (isAlreadySelected) {
-                const badge = document.createElement('span');
-                badge.className = 'badge';
-                badge.style.cssText = 'font-size: 0.7rem; background: #e2e8f0; color: #64748b;';
-                badge.textContent = 'Added';
-                title.appendChild(badge);
-                item.classList.add('disabled');
-              } else if (isAtLimit) {
-                const badge = document.createElement('span');
-                badge.className = 'badge badge-warning';
-                badge.style.cssText = 'font-size: 0.7rem;';
-                badge.textContent = 'Limit reached';
-                title.appendChild(badge);
-                item.classList.add('disabled');
-              }
-
-              const sub = document.createElement('div');
-              sub.style.cssText = 'font-size: 0.75rem; color: var(--text-muted);';
-              sub.textContent = `${site.id} — ${site.url}`;
-
-              item.appendChild(title);
-              item.appendChild(sub);
-
-              if (!isAlreadySelected && !isAtLimit) {
-                item.addEventListener('click', () => {
-                  addWebsite(site);
-                });
-              }
-
-              searchDropdown.appendChild(item);
-            });
-          }
-
-          searchDropdown.classList.remove('hidden');
-        } catch (e) {
-          console.error(e);
-        }
-      }, 250);
-    });
-
-    document.addEventListener('click', (e) => {
-      if (!searchInput.contains(e.target) && !searchDropdown.contains(e.target)) {
-        searchDropdown.classList.add('hidden');
-      }
-    });
-  }
-
-  // Initial render
-  renderSelectedWebsites();
 
   // Form submission
   form.addEventListener('submit', async (e) => {
@@ -583,31 +476,76 @@ function setupAdHocForm() {
       return;
     }
 
-    const isInventory = modeInventory && modeInventory.checked;
+    const isBatch = modeBatch ? modeBatch.checked : true;
     let payload = { validators };
 
-    if (isInventory) {
-      if (selectedWebsites.length === 0) {
-        alert('Please search and select at least one website from the inventory.');
+    if (isBatch) {
+      const urls = getBatchUrls();
+      if (urls.length === 0) {
+        alert('Please enter at least one website URL in the batch textarea.');
+        if (batchUrlsInput) batchUrlsInput.focus();
         return;
       }
-      if (selectedWebsites.length > MAX_BATCH_SIZE) {
-        alert(`Batch size cannot exceed ${MAX_BATCH_SIZE} websites.`);
+      if (urls.length > MAX_BATCH_SIZE) {
+        alert(`Batch size cannot exceed ${MAX_BATCH_SIZE} URLs. You currently have ${urls.length} URLs.`);
         return;
       }
-      payload.websites = selectedWebsites.map(s => s.id);
-      activeBatch = selectedWebsites.map(s => ({
-        websiteId: s.id,
-        name: s.name || s.id,
-        url: s.url
-      }));
+
+      // Validate each URL syntax & protocol
+      const seenNormalized = new Set();
+      for (let i = 0; i < urls.length; i++) {
+        const item = urls[i];
+        let parsed;
+        try {
+          parsed = new URL(item);
+        } catch (err) {
+          alert(`Invalid URL format on line ${i + 1}: "${item}". Please ensure it includes http:// or https://.`);
+          return;
+        }
+        if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+          alert(`Unsupported protocol on line ${i + 1}: "${item}". Only http: and https: protocols are supported.`);
+          return;
+        }
+
+        const normalized = clientNormalizeUrl(item);
+        if (seenNormalized.has(normalized)) {
+          alert(`Duplicate URL detected on line ${i + 1}: "${item}". Each URL in a batch must be distinct.`);
+          return;
+        }
+        seenNormalized.add(normalized);
+      }
+
+      payload.urls = urls;
+      activeBatch = urls.map(u => {
+        let label = u;
+        try {
+          label = new URL(u).hostname;
+        } catch (e) {}
+        return {
+          websiteId: label,
+          name: label,
+          url: u
+        };
+      });
     } else {
-      const urlInput = document.getElementById('urlInput');
       const url = urlInput ? urlInput.value.trim() : '';
       if (!url) {
         alert('Please enter a website URL.');
+        if (urlInput) urlInput.focus();
         return;
       }
+      let parsed;
+      try {
+        parsed = new URL(url);
+      } catch (err) {
+        alert(`Invalid URL format: "${url}". Please ensure it includes http:// or https://.`);
+        return;
+      }
+      if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+        alert(`Unsupported protocol: "${url}". Only http: and https: protocols are supported.`);
+        return;
+      }
+
       payload.url = url;
       activeBatch = null;
     }

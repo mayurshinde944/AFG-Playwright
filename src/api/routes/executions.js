@@ -25,15 +25,21 @@ registerValidators(globalRegistry);
 
 router.post('/', async (req, res) => {
   try {
-    const { url, websiteId, websites, validators } = req.body;
+    const { url, websiteId, websites, urls, validators } = req.body;
     
-    if (!url && !websiteId && !websites) {
-      return res.status(400).json({ error: 'Either websites, websiteId, or url is required' });
+    if (!url && !websiteId && !websites && !urls) {
+      return res.status(400).json({ error: 'Either urls, websites, websiteId, or url is required' });
     }
 
-    const targetTypes = [url ? 'url' : null, websiteId ? 'websiteId' : null, websites !== undefined ? 'websites' : null].filter(Boolean);
+    const targetTypes = [
+      url ? 'url' : null,
+      websiteId ? 'websiteId' : null,
+      websites !== undefined ? 'websites' : null,
+      urls !== undefined ? 'urls' : null
+    ].filter(Boolean);
+
     if (targetTypes.length > 1) {
-      return res.status(400).json({ error: 'Specify only one of websites, websiteId, or url' });
+      return res.status(400).json({ error: 'Specify only one of urls, websites, websiteId, or url' });
     }
     
     if (!validators || !Array.isArray(validators) || validators.length === 0) {
@@ -50,7 +56,38 @@ router.post('/', async (req, res) => {
     const config = ConfigurationManager.resolve({}, {});
     const requestArgs = { mode: 'execute', validators };
 
-    if (websites !== undefined) {
+    if (urls !== undefined) {
+      if (!Array.isArray(urls)) {
+        return res.status(400).json({ error: 'urls must be an array of website URLs' });
+      }
+      if (urls.length === 0) {
+        return res.status(400).json({ error: 'urls array cannot be empty' });
+      }
+      if (urls.length > 10) {
+        return res.status(400).json({ error: 'Batch size exceeds maximum limit of 10 URLs' });
+      }
+
+      const normalizedUrls = [];
+      const seenNormalized = new Set();
+      for (const item of urls) {
+        if (typeof item !== 'string' || item.trim() === '') {
+          return res.status(400).json({ error: 'urls must contain valid non-empty string URLs' });
+        }
+        let normalized;
+        try {
+          normalized = ScopeResolver.normalizeUrl(item);
+        } catch (err) {
+          return res.status(400).json({ error: err.message });
+        }
+        if (seenNormalized.has(normalized)) {
+          return res.status(400).json({ error: `Duplicate URL detected in batch: ${item}` });
+        }
+        seenNormalized.add(normalized);
+        normalizedUrls.push(item.trim());
+      }
+
+      requestArgs.scope = { type: 'adhoc', urls: normalizedUrls };
+    } else if (websites !== undefined) {
       if (!Array.isArray(websites)) {
         return res.status(400).json({ error: 'websites must be an array of website identifiers' });
       }
@@ -84,6 +121,11 @@ router.post('/', async (req, res) => {
     } else {
       if (typeof url !== 'string' || url.trim() === '') {
         return res.status(400).json({ error: 'url must be a non-empty string' });
+      }
+      try {
+        ScopeResolver.normalizeUrl(url);
+      } catch (err) {
+        return res.status(400).json({ error: err.message });
       }
       requestArgs.scope = { type: 'adhoc', url: url.trim() };
     }

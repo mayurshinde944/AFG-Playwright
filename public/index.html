@@ -59,39 +59,29 @@
             <label style="font-weight: 600; margin-bottom: 0.5rem; display: block;">Target Mode</label>
             <div style="display: flex; gap: 1.5rem; align-items: center; flex-wrap: wrap;">
               <label style="display: flex; align-items: center; gap: 0.35rem; cursor: pointer;">
-                <input type="radio" name="targetMode" value="inventory" checked id="modeInventory">
-                Inventory Batch (Multiple Sites)
+                <input type="radio" name="targetMode" value="batch" checked id="modeBatch">
+                Batch URLs (Multiple Sites)
               </label>
               <label style="display: flex; align-items: center; gap: 0.35rem; cursor: pointer;">
-                <input type="radio" name="targetMode" value="custom" id="modeCustom">
-                Custom URL (Single Site)
+                <input type="radio" name="targetMode" value="single" id="modeSingle">
+                Single URL
               </label>
             </div>
           </div>
 
-          <!-- Inventory Batch Mode Controls -->
-          <div id="inventoryModeControls" class="form-group">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem; flex-wrap: wrap; gap: 0.5rem;">
-              <label for="inventorySearchInput" style="margin: 0; font-weight: 500;">Search Inventory Websites</label>
-              <span id="selectionCountBadge" class="badge" style="background: #e2e8f0; color: #334155;">Selected: 0 / 10</span>
+          <!-- Batch URLs Mode Controls -->
+          <div id="batchModeControls" class="form-group">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem; max-width: 600px; flex-wrap: wrap; gap: 0.5rem;">
+              <label for="batchUrlsInput" style="margin: 0; font-weight: 500;">Batch Website URLs (one per line, up to 10)</label>
+              <span id="batchCountBadge" class="badge" style="background: #e2e8f0; color: #334155;">URLs: 0 / 10</span>
             </div>
-
-            <div style="position: relative; max-width: 500px;">
-              <input type="text" id="inventorySearchInput" placeholder="Type ID, name, or URL to search..." autocomplete="off" style="width: 100%; padding: 0.5rem; border: 1px solid var(--border-color); border-radius: 4px; font-size: 0.95rem;">
-              <div id="searchResultsDropdown" class="hidden" style="position: absolute; top: 100%; left: 0; right: 0; background: var(--card-bg); border: 1px solid var(--border-color); border-radius: 4px; max-height: 220px; overflow-y: auto; z-index: 1000; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);"></div>
-            </div>
-
-            <!-- Selected Websites Container -->
-            <div id="selectedWebsitesContainer" style="margin-top: 1rem;">
-              <div id="selectedWebsitesList" style="display: flex; flex-wrap: wrap; gap: 0.5rem; min-height: 38px; padding: 0.5rem; background: var(--bg-color); border: 1px dashed var(--border-color); border-radius: 4px; align-items: center;">
-                <span id="noWebsitesPlaceholder" style="color: var(--text-muted); font-size: 0.875rem;">No websites selected yet. Search above to add up to 10 websites.</span>
-              </div>
-            </div>
+            <textarea id="batchUrlsInput" class="batch-urls-textarea" rows="6" placeholder="https://example.com&#10;https://httpbin.org&#10;https://mysite.com/portal"></textarea>
+            <div class="batch-urls-hint">Enter 1 to 10 valid http(s) URLs, one URL per line. Blank lines and surrounding whitespace are ignored.</div>
           </div>
 
-          <!-- Custom URL Mode Controls -->
-          <div id="customModeControls" class="form-group hidden">
-            <label for="urlInput">Custom Website URL</label>
+          <!-- Single URL Mode Controls -->
+          <div id="singleModeControls" class="form-group hidden">
+            <label for="urlInput" style="font-weight: 500;">Website URL</label>
             <input type="url" id="urlInput" placeholder="https://example.com" style="width: 100%; max-width: 500px; padding: 0.5rem; border: 1px solid var(--border-color); border-radius: 4px; font-size: 0.95rem;">
           </div>
 

@@ -4,6 +4,52 @@ const Website = require('../models/Website');
 
 class ScopeResolver {
   /**
+   * Normalizes a URL for consistent matching and duplicate detection.
+   * - Trims leading and trailing whitespace
+   * - Lowercases hostname
+   * - Normalizes default ports (:80 for http, :443 for https)
+   * - Normalizes trailing slash on subpaths while preserving root /
+   * - Preserves distinct paths and query strings
+   * - Strips client-side fragments (#...)
+   * - Enforces http: or https: protocols
+   *
+   * @param {string} rawUrl
+   * @returns {string} Normalized URL
+   */
+  static normalizeUrl(rawUrl) {
+    if (typeof rawUrl !== 'string') {
+      throw new Error(`Invalid ad-hoc URL provided: ${rawUrl}`);
+    }
+    const trimmed = rawUrl.trim();
+    if (!trimmed) {
+      throw new Error(`Invalid ad-hoc URL provided: ${rawUrl}`);
+    }
+    let parsed;
+    try {
+      parsed = new URL(trimmed);
+    } catch (err) {
+      throw new Error(`Invalid ad-hoc URL provided: ${trimmed}`);
+    }
+
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+      throw new Error(`Invalid ad-hoc URL provided: ${trimmed}. Only http: and https: protocols are supported.`);
+    }
+
+    const protocol = parsed.protocol.toLowerCase();
+    const host = parsed.hostname.toLowerCase();
+    const port = (parsed.port && parsed.port !== '80' && parsed.port !== '443') ? `:${parsed.port}` : '';
+
+    let pathname = parsed.pathname || '/';
+    if (pathname.length > 1 && pathname.endsWith('/')) {
+      pathname = pathname.replace(/\/+$/, '');
+    }
+
+    const search = parsed.search || '';
+
+    return `${protocol}//${host}${port}${pathname}${search}`;
+  }
+
+  /**
    * Resolves the final list of websites based on the requested scope.
    * 
    * @param {import('../models/ExecutionRequest')} request 
@@ -75,27 +121,62 @@ class ScopeResolver {
     }
 
     if (scope.type === 'adhoc') {
-      if (!scope.url) {
+      const hasUrl = scope.url !== undefined;
+      const hasUrls = scope.urls !== undefined;
+
+      if (!hasUrl && !hasUrls) {
         throw new Error('Ad-hoc scope requires a url');
       }
-      
-      let host;
-      try {
-        const parsed = new URL(scope.url);
-        host = parsed.hostname;
-      } catch (err) {
-        throw new Error(`Invalid ad-hoc URL provided: ${scope.url}`);
+
+      if (hasUrl && !scope.url) {
+        throw new Error('Ad-hoc scope requires a url');
       }
-      
-      const shortId = host.replace(/[^a-z0-9]/gi, '-').substring(0, 30);
-      
-      return [new Website({
-        id: `adhoc-${shortId}`,
-        name: `Ad-hoc: ${host}`,
-        url: scope.url,
-        active: true,
-        domainType: 'custom'
-      })];
+
+      const rawTargets = hasUrls ? scope.urls : [scope.url];
+      if (!Array.isArray(rawTargets) || rawTargets.length === 0) {
+        throw new Error('Ad-hoc scope requires a non-empty list of URLs');
+      }
+      if (rawTargets.length > 10) {
+        throw new Error('Ad-hoc scope cannot exceed 10 URLs');
+      }
+
+      const websites = [];
+      const seenNormalized = new Set();
+      const seenSlugs = new Map();
+
+      for (const target of rawTargets) {
+        const normalized = ScopeResolver.normalizeUrl(target);
+        if (seenNormalized.has(normalized)) {
+          throw new Error(`Duplicate URL detected in batch: ${target}`);
+        }
+        seenNormalized.add(normalized);
+
+        const parsed = new URL(normalized);
+        const hostSlug = parsed.hostname.replace(/[^a-z0-9]/gi, '-').substring(0, 30);
+        let pathSlug = '';
+        if (parsed.pathname && parsed.pathname !== '/') {
+          const cleanPath = parsed.pathname.toLowerCase().replace(/[^a-z0-9]/gi, '-').replace(/-+/g, '-').replace(/^-|-$/g, '').substring(0, 20);
+          if (cleanPath) {
+            pathSlug = `-${cleanPath}`;
+          }
+        }
+
+        const baseSlug = `adhoc-${hostSlug}${pathSlug}`;
+        const count = (seenSlugs.get(baseSlug) || 0) + 1;
+        seenSlugs.set(baseSlug, count);
+        const id = count === 1 ? baseSlug : `${baseSlug}-${count}`;
+
+        const nameSuffix = parsed.pathname !== '/' ? parsed.pathname : '';
+        websites.push(new Website({
+          id,
+          name: `Ad-hoc: ${parsed.hostname}${nameSuffix}`,
+          url: typeof target === 'string' ? target.trim() : normalized,
+          active: true,
+          domainType: 'custom'
+        }));
+      }
+
+      return websites;
     }
 
     throw new Error(`Unsupported scope type: ${scope.type}`);

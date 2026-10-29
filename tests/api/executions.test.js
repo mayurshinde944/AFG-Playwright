@@ -4,6 +4,7 @@ const { app } = require('../../src/api/server');
 const CsvExcelInventoryLoader = require('../../src/inventory/CsvExcelInventoryLoader');
 const Website = require('../../src/models/Website');
 const ExecutionEngine = require('../../src/core/ExecutionEngine');
+const ExecutionQueue = require('../../src/core/ExecutionQueue');
 const ResultStore = require('../../src/reporting/ResultStore');
 
 describe('API Executions Endpoints', () => {
@@ -12,6 +13,7 @@ describe('API Executions Endpoints', () => {
   let loaderSpy;
   let engineSpy;
   let resultStoreSpy;
+  let enqueueSpy;
 
   const fixtureWebsites = [
     new Website({ id: 'site-001', name: 'Site 1', url: 'https://site1.example.com', active: true }),
@@ -43,12 +45,14 @@ describe('API Executions Endpoints', () => {
     loaderSpy = jest.spyOn(CsvExcelInventoryLoader.prototype, 'loadWebsites').mockResolvedValue(fixtureWebsites);
     engineSpy = jest.spyOn(ExecutionEngine.prototype, 'execute').mockResolvedValue();
     resultStoreSpy = jest.spyOn(ResultStore, 'saveRun').mockResolvedValue();
+    enqueueSpy = jest.spyOn(ExecutionQueue, 'enqueue');
   });
 
   afterEach(() => {
     if (loaderSpy) loaderSpy.mockRestore();
     if (engineSpy) engineSpy.mockRestore();
     if (resultStoreSpy) resultStoreSpy.mockRestore();
+    if (enqueueSpy) enqueueSpy.mockRestore();
   });
 
   function postJson(payload, callback) {
@@ -78,7 +82,7 @@ describe('API Executions Endpoints', () => {
   test('POST /api/executions rejects invalid payload when no target provided', (done) => {
     postJson({}, (res, body) => {
       expect(res.statusCode).toBe(400);
-      expect(body.error).toBe('Either websites, websiteId, or url is required');
+      expect(body.error).toBe('Either urls, websites, websiteId, or url is required');
       done();
     });
   });
@@ -86,7 +90,121 @@ describe('API Executions Endpoints', () => {
   test('POST /api/executions rejects payload with multiple target types', (done) => {
     postJson({ websites: ['site-001'], url: 'https://example.com', validators: ['http'] }, (res, body) => {
       expect(res.statusCode).toBe(400);
-      expect(body.error).toBe('Specify only one of websites, websiteId, or url');
+      expect(body.error).toBe('Specify only one of urls, websites, websiteId, or url');
+      expect(enqueueSpy).not.toHaveBeenCalled();
+      done();
+    });
+  });
+
+  test('POST /api/executions rejects payload combining urls and url', (done) => {
+    postJson({ urls: ['https://example.com'], url: 'https://example.com', validators: ['http'] }, (res, body) => {
+      expect(res.statusCode).toBe(400);
+      expect(body.error).toBe('Specify only one of urls, websites, websiteId, or url');
+      expect(enqueueSpy).not.toHaveBeenCalled();
+      done();
+    });
+  });
+
+  test('POST /api/executions rejects non-array urls field', (done) => {
+    postJson({ urls: 'https://example.com', validators: ['http'] }, (res, body) => {
+      expect(res.statusCode).toBe(400);
+      expect(body.error).toBe('urls must be an array of website URLs');
+      expect(enqueueSpy).not.toHaveBeenCalled();
+      done();
+    });
+  });
+
+  test('POST /api/executions rejects empty urls array', (done) => {
+    postJson({ urls: [], validators: ['http'] }, (res, body) => {
+      expect(res.statusCode).toBe(400);
+      expect(body.error).toBe('urls array cannot be empty');
+      expect(enqueueSpy).not.toHaveBeenCalled();
+      done();
+    });
+  });
+
+  test('POST /api/executions rejects batches exceeding 10 URLs', (done) => {
+    const elevenUrls = [
+      'https://site1.com', 'https://site2.com', 'https://site3.com',
+      'https://site4.com', 'https://site5.com', 'https://site6.com',
+      'https://site7.com', 'https://site8.com', 'https://site9.com',
+      'https://site10.com', 'https://site11.com'
+    ];
+    postJson({ urls: elevenUrls, validators: ['http'] }, (res, body) => {
+      expect(res.statusCode).toBe(400);
+      expect(body.error).toBe('Batch size exceeds maximum limit of 10 URLs');
+      expect(enqueueSpy).not.toHaveBeenCalled();
+      done();
+    });
+  });
+
+  test('POST /api/executions rejects malformed string entries in urls array', (done) => {
+    postJson({ urls: ['https://site1.com', '   ', 123], validators: ['http'] }, (res, body) => {
+      expect(res.statusCode).toBe(400);
+      expect(body.error).toBe('urls must contain valid non-empty string URLs');
+      expect(enqueueSpy).not.toHaveBeenCalled();
+      done();
+    });
+  });
+
+  test('POST /api/executions rejects invalid URL syntax in urls array', (done) => {
+    postJson({ urls: ['https://site1.com', 'not-a-valid-url'], validators: ['http'] }, (res, body) => {
+      expect(res.statusCode).toBe(400);
+      expect(body.error).toContain('Invalid ad-hoc URL provided: not-a-valid-url');
+      expect(enqueueSpy).not.toHaveBeenCalled();
+      done();
+    });
+  });
+
+  test('POST /api/executions rejects unsupported protocol in urls array', (done) => {
+    postJson({ urls: ['https://site1.com', 'ftp://files.example.com'], validators: ['http'] }, (res, body) => {
+      expect(res.statusCode).toBe(400);
+      expect(body.error).toContain('Only http: and https: protocols are supported');
+      expect(enqueueSpy).not.toHaveBeenCalled();
+      done();
+    });
+  });
+
+  test('POST /api/executions rejects duplicate URLs in urls array (including normalization)', (done) => {
+    postJson({ urls: ['https://EXAMPLE.com/about/', 'https://example.com/about'], validators: ['http'] }, (res, body) => {
+      expect(res.statusCode).toBe(400);
+      expect(body.error).toContain('Duplicate URL detected in batch');
+      expect(enqueueSpy).not.toHaveBeenCalled();
+      done();
+    });
+  });
+
+  test('POST /api/executions rejects invalid validator on multi-URL batch', (done) => {
+    postJson({ urls: ['https://site1.com', 'https://site2.com'], validators: ['invalid-validator'] }, (res, body) => {
+      expect(res.statusCode).toBe(400);
+      expect(body.error).toBe('Unknown validator: invalid-validator');
+      expect(enqueueSpy).not.toHaveBeenCalled();
+      done();
+    });
+  });
+
+  test('POST /api/executions successfully enqueues a valid batch of multiple URLs', (done) => {
+    postJson({ urls: ['https://example.com', 'https://httpbin.org'], validators: ['ssl'] }, (res, body) => {
+      expect(res.statusCode).toBe(202);
+      expect(body.runId).toBeDefined();
+      expect(body.status).toBe('QUEUED');
+      expect(enqueueSpy).toHaveBeenCalledTimes(1);
+      done();
+    });
+  });
+
+  test('POST /api/executions successfully enqueues URLs sharing the same hostname with distinct paths/queries', (done) => {
+    const urls = [
+      'https://example.com',
+      'https://example.com/about',
+      'https://example.com/services?tab=1',
+      'https://example.com/services?tab=2'
+    ];
+    postJson({ urls, validators: ['http'] }, (res, body) => {
+      expect(res.statusCode).toBe(202);
+      expect(body.runId).toBeDefined();
+      expect(body.status).toBe('QUEUED');
+      expect(enqueueSpy).toHaveBeenCalledTimes(1);
       done();
     });
   });

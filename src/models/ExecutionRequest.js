@@ -80,8 +80,32 @@ class ExecutionRequest {
     }
 
     if (this.scope.type === 'adhoc') {
-      if (!this.scope.url || typeof this.scope.url !== 'string') {
-        errors.push('scope.url is required for adhoc scope');
+      const hasUrl = this.scope.url !== undefined;
+      const hasUrls = this.scope.urls !== undefined;
+
+      if (!hasUrl && !hasUrls) {
+        errors.push('scope.url or scope.urls is required for adhoc scope');
+      } else if (hasUrl && hasUrls) {
+        errors.push('Specify only one of scope.url or scope.urls for adhoc scope');
+      } else if (hasUrl) {
+        if (typeof this.scope.url !== 'string' || this.scope.url.trim() === '') {
+          errors.push('scope.url must be a non-empty string');
+        }
+      } else if (hasUrls) {
+        if (!Array.isArray(this.scope.urls)) {
+          errors.push('scope.urls must be an array of website URLs');
+        } else if (this.scope.urls.length === 0) {
+          errors.push('scope.urls array cannot be empty');
+        } else if (this.scope.urls.length > 10) {
+          errors.push('scope.urls cannot exceed 10 URLs');
+        } else {
+          for (let i = 0; i < this.scope.urls.length; i++) {
+            const item = this.scope.urls[i];
+            if (typeof item !== 'string' || item.trim() === '') {
+              errors.push(`scope.urls[${i}] must be a non-empty string`);
+            }
+          }
+        }
       }
     }
 

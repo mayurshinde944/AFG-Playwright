@@ -285,52 +285,33 @@ pre {
   text-align: left;
 }
 
-/* Multi-Website Selection Styles */
-.website-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.5rem;
-  background: var(--card-bg);
+/* Batch URLs Textarea Styles */
+.batch-urls-textarea {
+  width: 100%;
+  max-width: 600px;
+  min-height: 130px;
+  padding: 0.5rem 0.75rem;
   border: 1px solid var(--border-color);
   border-radius: 4px;
-  padding: 0.35rem 0.6rem;
-  font-size: 0.85rem;
-  box-shadow: 0 1px 2px rgba(0,0,0,0.03);
-}
-
-.website-chip .chip-id {
-  font-weight: 600;
-  color: var(--primary);
-}
-
-.website-chip .chip-remove {
-  background: none;
-  border: none;
-  color: var(--text-muted);
-  cursor: pointer;
-  padding: 0 0.25rem;
-  font-size: 1rem;
-  line-height: 1;
-}
-
-.website-chip .chip-remove:hover {
-  color: var(--danger);
-}
-
-.search-result-item {
-  padding: 0.5rem 0.75rem;
-  cursor: pointer;
-  border-bottom: 1px solid var(--border-color);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
   font-size: 0.875rem;
+  line-height: 1.5;
+  resize: vertical;
+  background-color: var(--card-bg);
+  color: var(--text-main);
+  box-sizing: border-box;
 }
 
-.search-result-item:hover:not(.disabled) {
-  background-color: #f1f5f9;
+.batch-urls-textarea:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
 }
 
-.search-result-item.disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
+.batch-urls-hint {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  margin-top: 0.35rem;
 }
 
 /* Batch Execution Presentation Styles */
